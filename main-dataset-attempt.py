@@ -42,16 +42,9 @@ def names_and_labels(path):
     for file in labels:
         names.append(file)
         file_labels = labels[file]
-        labels_out.append(file_labels['corner-top'])
+        labels_out.append(file_labels['corner-top'])  # todo rever
 
     return names, labels_out
-
-
-def decode_img(img):
-    # convert the compressed string to a 3D uint8 tensor
-    img = tf.image.decode_jpeg(img, channels=3)
-    # resize the image to the desired size
-    return tf.image.resize(img, [img_width, img_height])
 
 
 def parse_function(filename, label):
@@ -63,8 +56,8 @@ def parse_function(filename, label):
     # This will convert to float values in [0, 1]
     image = tf.image.convert_image_dtype(image, tf.float32)
 
-    image = tf.image.resize_images(image, [64, 64])
-    return resized_image, label
+    # image = tf.image.resize(img, [img_width, img_height])
+    return image, label
 
 
 def train_preprocess(image, label):
@@ -81,14 +74,15 @@ def train_preprocess(image, label):
 
 # https://cs230.stanford.edu/blog/datapipeline/
 
-data_dir = 'sirky'
+data_dir = 'sirky'  # '/content/drive/My Drive/sirky'
 (img_width, img_height) = (4032, 3024)
 batch_size = 16
 
 names, labels = names_and_labels(data_dir)
 
-# labels = dict()
-print('\n'.join((str(i) for i in labels)))
+# labels = [ (x, y), ...
+# chtěl bych
+# labels = dict( 'corner-top': [ (x, y), ... ], ... )
 
 dataset = tf.data.Dataset.from_tensor_slices((names, labels))
 # dataset = dataset.shuffle(len(filenames))
@@ -96,3 +90,41 @@ dataset = dataset.map(parse_function)  # , num_parallel_calls=4
 # dataset = dataset.map(train_preprocess, num_parallel_calls=4)
 dataset = dataset.batch(batch_size)
 dataset = dataset.prefetch(1)
+
+model = tf.keras.models.Sequential(
+    [
+        tf.keras.Input(shape=(img_width, img_height, 3)),
+
+        tf.keras.layers.Conv2D(4, kernel_size=(3, 3), activation='relu'),
+        tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
+
+        tf.keras.layers.Conv2D(8, kernel_size=(3, 3), activation='relu'),
+        tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
+
+        tf.keras.layers.Conv2D(16, kernel_size=(3, 3), activation='relu'),
+        tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
+
+        tf.keras.layers.Conv2D(32, kernel_size=(3, 3), activation='relu'),
+        tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
+
+        # tf.keras.layers.Flatten(),
+        # tf.keras.layers.Dense(128, activation='relu'),
+        # tf.keras.layers.Dropout(0.2),
+        # tf.keras.layers.Dense(1)
+    ]
+)
+
+model.summary()
+
+
+
+
+
+
+
+
+
+
+
+
+
