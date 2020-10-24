@@ -4,34 +4,17 @@ import csv
 from collections import defaultdict
 import pathlib
 import PIL
-
 import os
+
+# copy of main-dataset-attempt [24/10]
+
+from labels import load_labels, img_dims
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 # class Label:
 #     def __init__(self, label_name, x, y, img_name, img_w, img_h):
 #         pass
-
-img_dims = dict()  # make use of
-
-
-def load_labels(path):
-    labels = defaultdict(lambda: defaultdict(list))  # file_name, categories, list of (x, y)
-    global img_dims
-
-    with open(path + os.sep + "labels.csv") as f:  # os.curdir + os.sep + path + os.sep +
-        csv_data = csv.reader(f, delimiter=',')
-        for line in csv_data:
-            label_name, x, y, img_name, img_w, img_h = line
-            full_img_name = path + os.sep + img_name
-
-            img = labels[full_img_name]
-            img[label_name].append((x * scale, y * scale))
-
-            img_dims[full_img_name] = (img_w, img_h)  # overwrites old value, risky
-
-    return labels
 
 
 def names_and_labels(path):
@@ -41,20 +24,14 @@ def names_and_labels(path):
 
     for file in labels:
         names.append(file)
-        labels_out.append(labels[file])
+        file_labels = labels[file]
+        labels_out.append(file_labels['corner-top'])  # todo temporary, revert
 
     return names, labels_out
 
 
-def decode_img(img):
-    # convert the compressed string to a 3D uint8 tensor
-    img = tf.image.decode_jpeg(img, channels=3)
-    # resize the image to the desired size
-    return tf.image.resize(img, [img_width * scale, img_height * scale])
-
-
 def parse_function(filename, label):
-    image_string = tf.read_file(filename)
+    image_string = tf.io.read_file(filename)
 
     # Don't use tf.image.decode_image, or the output shape will be undefined
     image = tf.image.decode_jpeg(image_string, channels=3)
@@ -62,8 +39,8 @@ def parse_function(filename, label):
     # This will convert to float values in [0, 1]
     image = tf.image.convert_image_dtype(image, tf.float32)
 
-    image = tf.image.resize_images(image, [64, 64])
-    return resized_image, label
+    # image = tf.image.resize(img, [img_width, img_height])
+    return image, label
 
 
 def train_preprocess(image, label):
@@ -78,42 +55,61 @@ def train_preprocess(image, label):
     return image, label
 
 
-# def load_images(path):
-#     for file in os.walk(os.curdir + os.sep + path):
-#         if not file.endswith('.jpg'):
-#             continue
-#
-#         img = tf.io.read_file(file)
-#         yield decode_img(img)
+# https://cs230.stanford.edu/blog/datapipeline/
 
-
-def process_path(path):
-    img = tf.io.read_file(path)
-    img = decode_img(img)
-    str_path = str(path)
-    try:
-        str_path = str_path.split('\'')[1]
-        print(str_path)
-    except:
-        print(str_path)
-        str_path = 'sirky/20201020_113911.jpg'
-    label_data = labels[str_path]
-
-    return img, label_data
-
-
-# https://www.tensorflow.org/tutorials/load_data/images#using_tfdata_for_finer_control
-data_dir = 'sirky'
-# os.chdir('sirky')  # idea for no prefix work
-scale = 1  # 0.25
-(img_width, img_height) = (4032 * scale, 3024 * scale)
+data_dir = 'sirky'  # '/content/drive/My Drive/sirky'
+(img_width, img_height) = (4032, 3024)
 batch_size = 16
 
 names, labels = names_and_labels(data_dir)
 
+# labels = [ (x, y), ...
+# chtěl bych
+# labels = dict( 'corner-top': [ (x, y), ... ], ... )
+
 dataset = tf.data.Dataset.from_tensor_slices((names, labels))
 # dataset = dataset.shuffle(len(filenames))
-dataset = dataset.map(parse_function, num_parallel_calls=4)
+dataset = dataset.map(parse_function)  # , num_parallel_calls=4
 # dataset = dataset.map(train_preprocess, num_parallel_calls=4)
 dataset = dataset.batch(batch_size)
 dataset = dataset.prefetch(1)
+
+model = tf.keras.models.Sequential(
+    [
+        tf.keras.Input(shape=(img_width, img_height, 3)),
+
+        tf.keras.layers.Conv2D(4, kernel_size=(3, 3), activation='relu'),
+        tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
+
+        tf.keras.layers.Conv2D(8, kernel_size=(3, 3), activation='relu'),
+        tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
+
+        tf.keras.layers.Conv2D(16, kernel_size=(3, 3), activation='relu'),
+        tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
+
+        tf.keras.layers.Conv2D(32, kernel_size=(3, 3), activation='relu'),
+        tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
+
+        # tf.keras.layers.Flatten(),
+        # tf.keras.layers.Dense(128, activation='relu'),
+        # tf.keras.layers.Dropout(0.2),
+        # tf.keras.layers.Dense(1)
+    ]
+)
+
+model.summary()
+
+# model.train(...)
+
+
+
+
+
+
+
+
+
+
+
+
+

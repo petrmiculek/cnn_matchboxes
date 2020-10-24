@@ -6,6 +6,8 @@ import pathlib
 import PIL
 
 import os
+from labels import load_labels
+
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
@@ -15,23 +17,6 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 img_dims = dict()  # make use of
 
-
-def load_labels(path):
-    labels = defaultdict(lambda: defaultdict(list))  # file_name, categories, list of (x, y)
-    global img_dims
-
-    with open(path + os.sep + "labels.csv") as f:  # os.curdir + os.sep + path + os.sep +
-        csv_data = csv.reader(f, delimiter=',')
-        for line in csv_data:
-            label_name, x, y, img_name, img_w, img_h = line
-            full_img_name = path + os.sep + img_name
-
-            img = labels[full_img_name]
-            img[label_name].append((x, y))
-
-            img_dims[full_img_name] = (img_w, img_h)  # overwrites old value, risky
-
-    return labels
 
 
 def names_and_labels(path):
@@ -115,6 +100,8 @@ model = tf.keras.models.Sequential(
 )
 
 model.summary()
+
+# model.train(...)
 
 
 
