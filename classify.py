@@ -34,7 +34,7 @@ batch_size = 32
 img_height = 64
 img_width = 64
 # data_dir = '/content/drive/My Drive/sirky/image_regions_64_050'
-data_dir = 'image_regions_64_050'
+data_dir = 'image_regions_64_100'
 
 train_ds = tf.keras.preprocessing.image_dataset_from_directory(
     data_dir,
@@ -98,7 +98,7 @@ tensorboard_callback = tf.keras.callbacks.TensorBoard(logdir, histogram_freq=1)
 
 """### Train a model"""
 
-model = models.conv_tutorial(num_classes)
+model = models.conv_tutorial_tweaked(num_classes)
 
 model.compile(
     optimizer='adam',
@@ -110,7 +110,7 @@ model.compile(
 history = model.fit(
     train_ds,
     validation_data=val_ds,
-    epochs=100,
+    epochs=20,
     callbacks=[tensorboard_callback]
 )
 
