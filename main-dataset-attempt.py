@@ -18,7 +18,6 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 img_dims = dict()  # make use of
 
 
-
 def names_and_labels(path):
     labels = load_labels(path)
     names = []
@@ -80,22 +79,24 @@ model = tf.keras.models.Sequential(
     [
         tf.keras.Input(shape=(img_width, img_height, 3)),
 
-        tf.keras.layers.Conv2D(4, kernel_size=(3, 3), activation='relu'),
+        tf.keras.layers.Conv2D(4, 3, activation='relu'),
         tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
 
-        tf.keras.layers.Conv2D(8, kernel_size=(3, 3), activation='relu'),
+        tf.keras.layers.Conv2D(8, 3, activation='relu'),
         tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
 
-        tf.keras.layers.Conv2D(16, kernel_size=(3, 3), activation='relu'),
+        tf.keras.layers.Conv2D(16, 3, activation='relu'),
         tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
 
-        tf.keras.layers.Conv2D(32, kernel_size=(3, 3), activation='relu'),
+        tf.keras.layers.Conv2D(32, 3, activation='relu'),
         tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
 
         # tf.keras.layers.Flatten(),
         # tf.keras.layers.Dense(128, activation='relu'),
         # tf.keras.layers.Dropout(0.2),
         # tf.keras.layers.Dense(1)
+        tf.keras.layers.Softmax()
+
     ]
 )
 
