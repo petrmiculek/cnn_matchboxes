@@ -7,6 +7,7 @@ import os
 from labels import load_labels, img_dims
 from random import randint
 
+
 # Dead development branch - if you want to copy code, look into 'image_regions.py'
 
 
@@ -26,7 +27,7 @@ def draw_cross(img, center_pos, line_length=20, color=(255, 0, 0), width=8):
 
 if __name__ == '__main__':
 
-    show_images = True
+    show_images = False
     save_images = not show_images
 
     scale = 1  # 0.25
@@ -48,9 +49,10 @@ if __name__ == '__main__':
         'corner-bottom': (50, 50, 200),
         'intersection-top': (200, 200, 50),
         'intersection-side': (200, 50, 200),
-        'edge-top': (50, 200, 200),
-        'edge-size': (200, 100, 50),
-        'default': (200, 200, 200),
+        'edge-top': (50, 255, 255),
+        'edge-side': (255, 100, 50),
+        'edge-bottom': (50, 255, 50),
+        'default': (150, 150, 150),
     }
 
     for file in labels:  # dict of labelled_files
@@ -71,10 +73,14 @@ if __name__ == '__main__':
                 print(path)
 
         if show_images:
+            cv.putText(img, file, (img.shape[1] // 5 * 4, img.shape[0] // 12 * 11),
+                       cv.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255),
+                       5, cv.LINE_AA)
             cv.imshow(':)', img)
 
             k = cv.waitKey(0)
             if k == ord("q"):
                 break
+
     if show_images:
         cv.destroyAllWindows()
