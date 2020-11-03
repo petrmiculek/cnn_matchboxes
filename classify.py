@@ -131,22 +131,33 @@ else:
 # separate dataset into images and labels
 imgs_per_batch = np.array([list(x[0].numpy()) for x in list(val_ds)], dtype='object')
 labels_per_batch = np.array([x[1].numpy() for x in list(val_ds)], dtype='object')
+# # only take first batch
+# imgs = np.array(imgs_per_batch[0])
+# labels = np.array(labels_per_batch[0])
 
 misclassified_counter = 0
-# only take first batch
-imgs = np.array(imgs_per_batch[0])
-labels = np.array(labels_per_batch[0])
+
+misclassified_folder = 'missclassified_regions_{}_e{}'.format(model.name, len(model.losses))
+os.makedirs(misclassified_folder, exist_ok=True)
+imgs = None
+labels = None
+
+for batch in list(val_ds):
+    if imgs is None:
+        imgs = np.array(list(batch[0].numpy()), dtype='object')
+        labels = np.array(list(batch[1].numpy()), dtype='object')
+    else:
+        imgs = np.append(imgs, np.array(list(batch[0].numpy()), dtype='object'), axis=0)
+        labels = np.append(labels, np.array(list(batch[1].numpy()), dtype='object'), axis=0)
 
 # predict and check predictions
-predictions_raw = model.predict(imgs)
+predictions_raw = model.predict(tf.convert_to_tensor(imgs, dtype=tf.float32))
 
 predictions = np.argmax(predictions_raw, axis=1)
 false_pred = np.where(labels != predictions)[0]  # reduce dimensions of a nested array
 
-# show misclassified images
-misclassified_folder = 'missclassified_regions_{}_e{}'.format(model.name, len(model.losses))
-os.makedirs(misclassified_folder, exist_ok=True)
 
+# show misclassified images
 for idx in false_pred:
 
     label_true = class_names[labels[idx]]
@@ -166,7 +177,7 @@ for idx in false_pred:
     misclassified_counter += 1
 
 # confusion matrix
-conf_mat = tf.math.confusion_matrix(labels, predictions)
+conf_mat = confusion_matrix(list(labels), list(predictions))
 
 sns.heatmap(
     conf_mat, annot=True,
