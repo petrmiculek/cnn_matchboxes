@@ -5,14 +5,21 @@ from collections import defaultdict
 import pathlib
 import os
 from labels import load_labels, img_dims
-from random import randint
+import random
 from math import sqrt
 
+# global parameters
 region_side = 64
+scale = 0.5
+input_folder = 'sirky'
+output_folder = "image_regions_{}_{:03d}".format(region_side, int(scale*100))
+labels_file = 'labels.csv'
+
+random.seed(1234)
 
 
-def random_color():
-    return randint(0, 255), randint(0, 255), randint(0, 255)
+# def random_color():
+#     return randint(0, 255), randint(0, 255), randint(0, 255)
 
 
 def draw_cross(img, center_pos, line_length=20, color=(255, 0, 0), width=4):
@@ -59,19 +66,16 @@ def crop_out(img, center_pos, side=None):
     return cropped
 
 
+# not useful for training
 # def random_offset(center_pos, maxoffset=10):
 #     return center_pos[0] + randint(-maxoffset, maxoffset), center_pos[1] + randint(-maxoffset, maxoffset)
+
 
 def euclid_dist(pos1, pos2):
     return sqrt((pos1[0] - pos2[0]) ** 2 + (pos1[1] - pos2[1]) ** 2)
 
 
 if __name__ == '__main__':
-    scale = 1
-
-    input_folder = 'sirky'
-    output_folder = "image_regions"
-    labels_file = 'labels.csv'
 
     if not os.path.isdir(output_folder):
         os.makedirs(output_folder, exist_ok=True)
@@ -82,6 +86,9 @@ if __name__ == '__main__':
         img = cv.imread(input_folder + os.sep + file)
         img = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))  # reversed indices, OK
         file_labels = []
+
+        mean_label_per_category_count = np.mean([len([labels[file][category] for category in labels[file]])])
+
         # generating regions from labels = keypoints
         for category in labels[file]:  # dict of categories
             if not os.path.isdir(output_folder + os.sep + category):
@@ -98,30 +105,34 @@ if __name__ == '__main__':
                 region_filename = file.split('.')[0] + '_(' + str(label_pos[0]) + ',' + str(label_pos[1]) + ').jpg'
 
                 tmp = cv.imwrite(region_path + region_filename, region)
-    # generating regions from the background
 
-    # category = 'background'
-    # if not os.path.isdir(output_folder + os.sep + category):
-    #     os.makedirs(output_folder + os.sep + category, exist_ok=True)
-    #
-    # for i in range(500):
-    #     pos = (0, 0)
-    #     repeat = True
-    #     while repeat:
-    #         repeat = False
-    #         # generate position
-    #         pos = \
-    #             int(randint(region_side // 2, img.shape[1] - region_side // 2) * scale), \
-    #             int(randint(region_side // 2, img.shape[0] - region_side // 2) * scale)
-    #
-    #         # test that position is not too close to an existing label
-    #         for label_pos in file_labels:
-    #             if euclid_dist(pos, label_pos) < (region_side // 2):
-    #                 repeat = True
-    #
-    #     region_background = crop_out(img, pos)
-    #     region_path = output_folder + os.sep + category + os.sep  # per category folder
-    #     region_filename = file.split('.')[0] + '_(' + str(pos[0]) + ',' + str(pos[1]) + ').jpg'
-    #
-    #     tmp = cv.imwrite(region_path + region_filename, region_background)
-    #     print('.', end='')
+        # generating regions from the background
+        category = 'background'
+        if not os.path.isdir(output_folder + os.sep + category):
+            os.makedirs(output_folder + os.sep + category, exist_ok=True)
+
+        repeated = 0
+        for i in np.arange(np.ceil(mean_label_per_category_count)):
+            pos = (0, 0)
+            repeat = True
+            while repeat:
+                repeat = False
+                # generate position
+                pos = \
+                    int(random.randint(region_side // 2, img.shape[1] - region_side // 2) * scale), \
+                    int(random.randint(region_side // 2, img.shape[0] - region_side // 2) * scale)
+
+                # test that position is not too close to an existing label
+                for label_pos in file_labels:
+                    if euclid_dist(pos, label_pos) < (region_side // 2):
+                        # warning - does not take scale into account
+                        repeated += 1
+                        repeat = True
+
+            region_background = crop_out(img, pos)
+            region_path = output_folder + os.sep + category + os.sep  # per category folder
+            region_filename = file.split('.')[0] + '_(' + str(pos[0]) + ',' + str(pos[1]) + ').jpg'
+
+            tmp = cv.imwrite(region_path + region_filename, region_background)
+
+        print(repeated)
