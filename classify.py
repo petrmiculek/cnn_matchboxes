@@ -10,13 +10,21 @@ import matplotlib.pyplot as plt
 import models
 from sklearn.metrics import confusion_matrix
 import tempfile
+import tensorboard
+import seaborn as sns
+
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
 
 print(f'{tf.__version__=}')
 
 # from google.colab import drive
 # drive.mount('/content/drive')
+
+""" TensorBoard debugging """
+logdir = 'logs'
+tf.debugging.experimental.enable_dump_debug_info(logdir, tensor_debug_mode="FULL_HEALTH", circular_buffer_size=-1)
 
 """ Load a dataset """
 
@@ -93,28 +101,30 @@ model = models.conv_tutorial(num_classes)
 saved_model_path = os.path.join('learned_weights', model.name)
 
 # Load saved model
-# model = tf.keras.models.load_model(saved_model_path)
+load_module = True
 
-""" Train a model"""
-model.compile(
-    optimizer='adam',
-    loss=tf.losses.SparseCategoricalCrossentropy(from_logits=True),
-    metrics=['accuracy'])
+if load_module:
+    model = tf.keras.models.load_model(saved_model_path)
+else:
+    """ Train a model"""
+    model.compile(
+        optimizer='adam',
+        loss=tf.losses.SparseCategoricalCrossentropy(from_logits=True),
+        metrics=['accuracy'])
 
+    history = model.fit(
+        train_ds,
+        validation_data=val_ds,
+        epochs=200,
+        callbacks=[tensorboard_callback]
+    )
 
-history = model.fit(
-    train_ds,
-    validation_data=val_ds,
-    epochs=1,
-    callbacks=[tensorboard_callback]
-)
+    """Save model weights"""
 
-"""Save model weights"""
+    model.save(saved_model_path)
 
-model.save(saved_model_path)
-
-# weights only -> cannot be trained after loading
-# model.save_weights(learned_weights)
+    # weights only -> cannot be trained after loading
+    # model.save_weights(learned_weights)
 
 """Visualize wrong predictions"""
 
@@ -134,7 +144,7 @@ predictions = np.argmax(predictions_raw, axis=1)
 false_pred = np.where(labels != predictions)[0]  # reduce dimensions of a nested array
 
 # show misclassified images
-misclassified_folder = 'missclassified_regions_' + model.name
+misclassified_folder = 'missclassified_regions_{}_e{}'.format(model.name, len(model.losses))
 os.makedirs(misclassified_folder, exist_ok=True)
 
 for idx in false_pred:
@@ -146,20 +156,26 @@ for idx in false_pred:
     plt.title('T:{} x F:{}'.format(label_true, label_predicted))
 
     plt.axis("off")
-    plt.imshow(imgs[idx].astype("uint8"))  # , cmap=plt.get_cmap("gray")
+    plt.imshow(imgs[idx].astype("uint8"))
+    plt.tight_layout()
 
-    plt.savefig(os.path.join(misclassified_folder, '{}_{}_x_{}'.format(misclassified_counter,
-                                                                       label_true,
-                                                                       label_predicted)))
+    plot_path = os.path.join(misclassified_folder,
+                             '{}_{}_x_{}'.format(misclassified_counter, label_true, label_predicted))
+    plt.savefig(plot_path, bbox_inches='tight')
+    # plt.show()
     misclassified_counter += 1
-    plt.show()
 
 # confusion matrix
 conf_mat = tf.math.confusion_matrix(labels, predictions)
 
-plt.imshow(conf_mat)
+sns.heatmap(
+    conf_mat, annot=True,
+    xticklabels=class_names,
+    yticklabels=class_names)
+plt.title('Confusion Matrix')
+plt.xlabel("Predicted")
+plt.ylabel("True")
 plt.show()
-
 """
 
 custom training loop instead of using `model.fit`. 
