@@ -13,18 +13,13 @@ import tempfile
 import tensorboard
 import seaborn as sns
 
-
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-
 
 print(f'{tf.__version__=}')
 
 # from google.colab import drive
 # drive.mount('/content/drive')
-
-""" TensorBoard debugging """
-logdir = 'logs'
-tf.debugging.experimental.enable_dump_debug_info(logdir, tensor_debug_mode="FULL_HEALTH", circular_buffer_size=-1)
+save_outputs = False
 
 """ Load a dataset """
 
@@ -89,19 +84,22 @@ val_ds = val_ds.cache().prefetch(buffer_size=AUTOTUNE)
 
 """ Logging """
 logs_folder = 'logs'
-if not os.path.isdir(logs_folder):
-    os.makedirs(logs_folder, exist_ok=True)
+
+os.makedirs(logs_folder, exist_ok=True)
 
 logdir = os.path.join(logs_folder, datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
 tensorboard_callback = tf.keras.callbacks.TensorBoard(logdir, histogram_freq=1)
 
-""" Create/Load a model """
-model = models.conv_tutorial(num_classes)
+tf.debugging.experimental.enable_dump_debug_info(os.path.join(logs_folder, 'debug'), tensor_debug_mode="FULL_HEALTH", circular_buffer_size=-1)
 
-saved_model_path = os.path.join('learned_weights', model.name)
+
+""" Create/Load a model """
+model = models.conv_tutorial_tweaked(num_classes)
+
+saved_model_path = os.path.join('model_saved_', model.name)
 
 # Load saved model
-load_module = True
+load_module = False
 
 if load_module:
     model = tf.keras.models.load_model(saved_model_path)
@@ -115,16 +113,16 @@ else:
     history = model.fit(
         train_ds,
         validation_data=val_ds,
-        epochs=200,
+        epochs=50,
         callbacks=[tensorboard_callback]
     )
 
     """Save model weights"""
+    if save_outputs:
+        model.save(saved_model_path)
 
-    model.save(saved_model_path)
-
-    # weights only -> cannot be trained after loading
-    # model.save_weights(learned_weights)
+        # weights only -> cannot be trained after loading
+        # model.save_weights(learned_weights)
 
 """Visualize wrong predictions"""
 
@@ -136,9 +134,9 @@ labels_per_batch = np.array([x[1].numpy() for x in list(val_ds)], dtype='object'
 # labels = np.array(labels_per_batch[0])
 
 misclassified_counter = 0
-
-misclassified_folder = 'missclassified_regions_{}_e{}'.format(model.name, len(model.losses))
-os.makedirs(misclassified_folder, exist_ok=True)
+if save_outputs:
+    misclassified_folder = 'missclassified_regions_{}_e{}'.format(model.name, len(model.losses))
+    os.makedirs(misclassified_folder, exist_ok=True)
 imgs = None
 labels = None
 
@@ -170,10 +168,11 @@ for idx in false_pred:
     plt.imshow(imgs[idx].astype("uint8"))
     plt.tight_layout()
 
-    plot_path = os.path.join(misclassified_folder,
-                             '{}_{}_x_{}'.format(misclassified_counter, label_true, label_predicted))
-    plt.savefig(plot_path, bbox_inches='tight')
-    # plt.show()
+    if save_outputs:
+        plot_path = os.path.join(misclassified_folder,
+                                 '{}_{}_x_{}'.format(misclassified_counter, label_true, label_predicted))
+        plt.savefig(plot_path, bbox_inches='tight')
+    plt.show()
     misclassified_counter += 1
 
 # confusion matrix
@@ -186,7 +185,11 @@ sns.heatmap(
 plt.title('Confusion Matrix')
 plt.xlabel("Predicted")
 plt.ylabel("True")
+
 plt.show()
+if save_outputs:
+    plt.savefig(os.path.join(misclassified_folder, 'confusion_matrix'), bbox_inches='tight')
+
 """
 
 custom training loop instead of using `model.fit`. 
