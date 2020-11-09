@@ -12,46 +12,27 @@ from sklearn.metrics import confusion_matrix
 import tempfile
 import tensorboard
 import seaborn as sns
-import glob
-import pathlib
+from datasets import get_dataset
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 print(f'{tf.__version__=}')
 
 # from google.colab import drive
 # drive.mount('/content/drive')
+
+# model weights, plotted imgs/charts
 save_outputs = False
 
 """ Load a dataset """
 
-batch_size = 32
-img_height = 64
-img_width = 64
 # data_dir = '/content/drive/My Drive/sirky/image_regions_64_050'
 data_dir = 'image_regions_64_050'
 
-train_ds = tf.keras.preprocessing.image_dataset_from_directory(
-    data_dir,
-    validation_split=0.2,
-    subset="training",
-    seed=123,
-    image_size=(img_height, img_width),
-    batch_size=batch_size)
-
-val_ds = tf.keras.preprocessing.image_dataset_from_directory(
-    data_dir,
-    validation_split=0.2,
-    subset="validation",
-    seed=123,
-    image_size=(img_height, img_width),
-    batch_size=batch_size)
-
-class_names = train_ds.class_names
+class_names, train_ds, val_ds, val_ds_batch = get_dataset(data_dir)
 num_classes = len(class_names)
 
 """ Visualize the data """
-
 # plt.figure(figsize=(10, 10))
 # for images, labels in train_ds.take(1):
 #     for i in range(9):
@@ -59,30 +40,7 @@ num_classes = len(class_names)
 #         plt.imshow(images[i].numpy().astype("uint8"))
 #         plt.title(class_names[labels[i]])
 #         plt.axis("off")
-#
 # plt.show()
-
-""" Configure dataset for performance
-
-buffered prefetching = yield data without I/O blocking. 
-two important methods when loading data.
-
-`.cache()` keeps the images in memory after they're loaded off disk during the first epoch. 
-This will ensure the dataset does not become a bottleneck while training your model. If your dataset is too large to fit into memory, 
-you can also use this method to create a performant on-disk cache.
-
-`.prefetch()` overlaps data preprocessing and model execution while training. 
-
-[data performance guide](https://www.tensorflow.org/guide/data_performance#prefetching).
-"""
-
-val_as_batch_dataset = val_ds
-
-AUTOTUNE = tf.data.experimental.AUTOTUNE
-
-train_ds = train_ds.cache().prefetch(buffer_size=AUTOTUNE)
-val_ds = val_ds.cache().prefetch(buffer_size=AUTOTUNE)
-
 
 """ Logging """
 logs_folder = 'logs'
@@ -92,11 +50,11 @@ os.makedirs(logs_folder, exist_ok=True)
 logdir = os.path.join(logs_folder, datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
 tensorboard_callback = tf.keras.callbacks.TensorBoard(logdir, histogram_freq=1)
 
-tf.debugging.experimental.enable_dump_debug_info(os.path.join(logs_folder, 'debug'), tensor_debug_mode="FULL_HEALTH", circular_buffer_size=-1)
-
+tf.debugging.experimental.enable_dump_debug_info(os.path.join(logs_folder, 'debug'), tensor_debug_mode="FULL_HEALTH",
+                                                 circular_buffer_size=-1)
 
 """ Create/Load a model """
-model = models.conv_tutorial_tweaked(num_classes)
+model = models.conv_tutorial(num_classes)
 
 saved_model_path = os.path.join('model_saved_', model.name)
 
@@ -156,41 +114,40 @@ predictions_raw = model.predict(tf.convert_to_tensor(imgs, dtype=tf.float32))
 predictions = np.argmax(predictions_raw, axis=1)
 false_pred = np.where(labels != predictions)[0]  # reduce dimensions of a nested array
 
-
 # show misclassified images
 for idx in false_pred:
-
     label_true = class_names[labels[idx]]
     label_predicted = class_names[predictions[idx]]
 
-    # True label x Predicted label
-    plt.title('T:{} x F:{}'.format(label_true, label_predicted))
+    fig = plt.imshow(imgs[idx].astype("uint8"))
 
-    plt.axis("off")
-    plt.imshow(imgs[idx].astype("uint8"))
-    plt.tight_layout()
+    # True label x Predicted label
+    fig.axes.set_title('T:{} x F:{}'.format(label_true, label_predicted))
+    fig.axes.axis("off")
+    # fig.axes.figure.tight_layout(pad=1.0)
 
     if save_outputs:
         plot_path = os.path.join(misclassified_folder,
                                  '{}_{}_x_{}'.format(misclassified_counter, label_true, label_predicted))
-        plt.savefig(plot_path, bbox_inches='tight')
-    plt.show()
+        fig.savefig(plot_path, bbox_inches='tight')
+    fig.axes.figure.show()
     misclassified_counter += 1
 
 # confusion matrix
 conf_mat = confusion_matrix(list(labels), list(predictions))
 
-sns.heatmap(
+fig = sns.heatmap(
     conf_mat, annot=True,
     xticklabels=class_names,
     yticklabels=class_names)
-plt.title('Confusion Matrix')
-plt.xlabel("Predicted")
-plt.ylabel("True")
+fig.set_title('Confusion Matrix')
+fig.set_xlabel("Predicted")
+fig.set_ylabel("True")
+fig.tight_layout(pad=1.0)
 
-plt.show()
+fig.figure.show()
 if save_outputs:
-    plt.savefig(os.path.join(misclassified_folder, 'confusion_matrix'), bbox_inches='tight')
+    fig.savefig(os.path.join(misclassified_folder, 'confusion_matrix.png'), bbox_inches='tight')
 
 """
 
@@ -199,4 +156,3 @@ To learn more, visit https://www.tensorflow.org/guide/keras/writing_a_training_l
 
 more about overfitting and how to reduce it in https://www.tensorflow.org/tutorials/keras/overfit_and_underfit
 """
-
