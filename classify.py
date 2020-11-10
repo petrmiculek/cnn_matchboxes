@@ -1,18 +1,18 @@
 # -*- coding: utf-8 -*-
 """
 https://colab.research.google.com/drive/1F28FEGGLmy8-jW9IaOo60InR9VQtPbmG
+
+todo:
+why no labels in confusion matrix?
+why is confusion matrix not shown when plotting misclassified regions?
+
 """
 import datetime
-import numpy as np
 import os
 import tensorflow as tf
-import matplotlib.pyplot as plt
 import models
-from sklearn.metrics import confusion_matrix
-import tempfile
-import tensorboard
-import seaborn as sns
 from datasets import get_dataset
+from show_results import visualize_results
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -70,12 +70,22 @@ else:
         loss=tf.losses.SparseCategoricalCrossentropy(from_logits=True),
         metrics=['accuracy'])
 
-    history = model.fit(
+    # only 1 epoch so that I can show model summary
+    _ = model.fit(
         train_ds,
         validation_data=val_ds,
-        epochs=50,
+        epochs=1,
         callbacks=[tensorboard_callback]
     )
+
+    # print(model.summary())
+
+    # history = model.fit(
+    #     train_ds,
+    #     validation_data=val_ds,
+    #     epochs=20,
+    #     callbacks=[tensorboard_callback]
+    # )
 
     """Save model weights"""
     if save_outputs:
@@ -84,70 +94,7 @@ else:
         # weights only -> cannot be trained after loading
         # model.save_weights(learned_weights)
 
-"""Visualize wrong predictions"""
-
-# separate dataset into images and labels
-imgs_per_batch = np.array([list(x[0].numpy()) for x in list(val_ds)], dtype='object')
-labels_per_batch = np.array([x[1].numpy() for x in list(val_ds)], dtype='object')
-# # only take first batch
-# imgs = np.array(imgs_per_batch[0])
-# labels = np.array(labels_per_batch[0])
-
-misclassified_counter = 0
-if save_outputs:
-    misclassified_folder = 'missclassified_regions_{}_e{}'.format(model.name, len(model.losses))
-    os.makedirs(misclassified_folder, exist_ok=True)
-imgs = None
-labels = None
-
-for batch in list(val_ds):
-    if imgs is None:
-        imgs = np.array(list(batch[0].numpy()), dtype='object')
-        labels = np.array(list(batch[1].numpy()), dtype='object')
-    else:
-        imgs = np.append(imgs, np.array(list(batch[0].numpy()), dtype='object'), axis=0)
-        labels = np.append(labels, np.array(list(batch[1].numpy()), dtype='object'), axis=0)
-
-# predict and check predictions
-predictions_raw = model.predict(tf.convert_to_tensor(imgs, dtype=tf.float32))
-
-predictions = np.argmax(predictions_raw, axis=1)
-false_pred = np.where(labels != predictions)[0]  # reduce dimensions of a nested array
-
-# show misclassified images
-for idx in false_pred:
-    label_true = class_names[labels[idx]]
-    label_predicted = class_names[predictions[idx]]
-
-    fig = plt.imshow(imgs[idx].astype("uint8"))
-
-    # True label x Predicted label
-    fig.axes.set_title('T:{} x F:{}'.format(label_true, label_predicted))
-    fig.axes.axis("off")
-    # fig.axes.figure.tight_layout(pad=1.0)
-
-    if save_outputs:
-        plot_path = os.path.join(misclassified_folder,
-                                 '{}_{}_x_{}'.format(misclassified_counter, label_true, label_predicted))
-        fig.savefig(plot_path, bbox_inches='tight')
-    fig.axes.figure.show()
-    misclassified_counter += 1
-
-# confusion matrix
-conf_mat = confusion_matrix(list(labels), list(predictions))
-
-fig = sns.heatmap(
-    conf_mat, annot=True,
-    xticklabels=class_names,
-    yticklabels=class_names)
-fig.set_title('Confusion Matrix')
-fig.set_xlabel("Predicted")
-fig.set_ylabel("True")
-fig.tight_layout(pad=1.0)
-
-fig.figure.show()
-if save_outputs:
-    fig.savefig(os.path.join(misclassified_folder, 'confusion_matrix.png'), bbox_inches='tight')
+visualize_results(val_ds, model, save_outputs, class_names)
 
 """
 

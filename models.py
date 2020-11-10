@@ -4,13 +4,13 @@ import tensorflow as tf
 def conv_tutorial(num_classes):
     return tf.keras.Sequential([
         tf.keras.layers.experimental.preprocessing.Rescaling(1. / 255),
-        tf.keras.layers.Conv2D(32, 3, activation='relu'),
+        tf.keras.layers.Conv2D(32, 3, activation='relu', padding='same'),
         tf.keras.layers.MaxPooling2D(),
 
-        tf.keras.layers.Conv2D(32, 3, activation='relu'),
+        tf.keras.layers.Conv2D(32, 3, activation='relu', padding='same'),
         tf.keras.layers.MaxPooling2D(),
 
-        tf.keras.layers.Conv2D(32, 3, activation='relu'),
+        tf.keras.layers.Conv2D(32, 3, activation='relu', padding='same'),
         tf.keras.layers.MaxPooling2D(),
 
         tf.keras.layers.Flatten(),
@@ -26,16 +26,16 @@ def conv_tutorial_tweaked(num_classes, first_conv=32):
         [
             tf.keras.layers.experimental.preprocessing.Rescaling(1. / 255),
 
-            tf.keras.layers.Conv2D(first_conv, 3, activation='relu'),
-            tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),  # == default pool_size
-
-            tf.keras.layers.Conv2D(first_conv * 2, 3, activation='relu'),
+            tf.keras.layers.Conv2D(first_conv, 3, activation='relu', padding='same'),
+            tf.keras.layers.Conv2D(first_conv, 3, activation='relu', padding='same'),
             tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
 
-            tf.keras.layers.Conv2D(first_conv * 4, 3, activation='relu'),
+            tf.keras.layers.Conv2D(first_conv * 2, 3, activation='relu', padding='same'),
+            tf.keras.layers.Conv2D(first_conv * 2, 3, activation='relu', padding='same'),
             tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
 
-            tf.keras.layers.Conv2D(first_conv * 8, 3, activation='relu'),
+            tf.keras.layers.Conv2D(first_conv * 4, 3, activation='relu', padding='same'),
+            tf.keras.layers.Conv2D(first_conv * 4, 3, activation='relu', padding='same'),
             tf.keras.layers.MaxPooling2D(pool_size=(2, 2)),
 
             tf.keras.layers.Flatten(),
@@ -46,3 +46,11 @@ def conv_tutorial_tweaked(num_classes, first_conv=32):
         ]
         , name='sequential_4conv_{}channels_doubling'.format(first_conv)
     )
+
+
+def residual1(num_classes, first_conv=32):
+    def res_block(channels=first_conv):
+        pass
+
+    return tf.keras.models.Functional()
+    pass
