@@ -22,16 +22,15 @@ def visualize_results(val_ds, model, save_outputs, class_names):
     misclassified_folder = 'missclassified_regions_{}_e{}'.format(model.name, len(model.losses))
     if save_outputs:
         os.makedirs(misclassified_folder, exist_ok=True)
-    imgs = None
-    labels = None
+    imgs = []
+    labels = []
 
     for batch in list(val_ds):
-        if imgs is None:
-            imgs = np.array(list(batch[0].numpy()), dtype='object')
-            labels = np.array(list(batch[1].numpy()), dtype='object')
-        else:
-            imgs = np.append(imgs, np.array(list(batch[0].numpy()), dtype='object'), axis=0)
-            labels = np.append(labels, np.array(list(batch[1].numpy()), dtype='object'), axis=0)
+        imgs.append(batch[0].numpy())
+        labels.append(batch[1].numpy())
+
+    imgs = np.vstack(imgs)  # -> 4D [img_count x width x height x channels]
+    labels = np.hstack(labels)  # -> 1D [img_count]
 
     # predict and check predictions
     predictions_raw = model.predict(tf.convert_to_tensor(imgs, dtype=tf.float32))

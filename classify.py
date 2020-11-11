@@ -7,14 +7,14 @@ why no labels in confusion matrix?
 why is confusion matrix not shown when plotting misclassified regions?
 
 """
-import datetime
 import os
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
+import datetime
 import models
 from datasets import get_dataset
 from show_results import visualize_results
-
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 print(f'{tf.__version__=}')
 
@@ -56,7 +56,7 @@ tf.debugging.experimental.enable_dump_debug_info(os.path.join(logs_folder, 'debu
 """ Create/Load a model """
 model = models.conv_tutorial(num_classes)
 
-saved_model_path = os.path.join('model_saved_', model.name)
+saved_model_path = os.path.join('models_saved', model.name)
 
 # Load saved model
 load_module = False
