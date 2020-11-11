@@ -3,44 +3,31 @@
 https://colab.research.google.com/drive/1F28FEGGLmy8-jW9IaOo60InR9VQtPbmG
 
 todo:
-why no labels in confusion matrix?
-why is confusion matrix not shown when plotting misclassified regions?
-
+fix annotation sirky (1 img)
 """
 import os
-
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 import datetime
 import models
 from datasets import get_dataset
 from show_results import visualize_results
+import numpy as np
 
 print(f'{tf.__version__=}')
 
 # from google.colab import drive
 # drive.mount('/content/drive')
+# data_dir = '/content/drive/My Drive/sirky/image_regions_64_050'
 
-# model weights, plotted imgs/charts
+# save model weights, plotted imgs/charts
 save_outputs = False
 
-""" Load a dataset """
-
-# data_dir = '/content/drive/My Drive/sirky/image_regions_64_050'
+""" Load dataset """
 data_dir = 'image_regions_64_050'
 
-class_names, train_ds, val_ds, val_ds_batch = get_dataset(data_dir)
+class_names, train_ds, val_ds, val_ds_batch, class_weights = get_dataset(data_dir)
 num_classes = len(class_names)
-
-""" Visualize the data """
-# plt.figure(figsize=(10, 10))
-# for images, labels in train_ds.take(1):
-#     for i in range(9):
-#         ax = plt.subplot(3, 3, i + 1)
-#         plt.imshow(images[i].numpy().astype("uint8"))
-#         plt.title(class_names[labels[i]])
-#         plt.axis("off")
-# plt.show()
 
 """ Logging """
 logs_folder = 'logs'
@@ -63,8 +50,9 @@ load_module = False
 
 if load_module:
     model = tf.keras.models.load_model(saved_model_path)
+    epochs_trained = 0
 else:
-    """ Train a model"""
+    """ Train the model"""
     model.compile(
         optimizer='adam',
         loss=tf.losses.SparseCategoricalCrossentropy(from_logits=True),
@@ -75,31 +63,25 @@ else:
         train_ds,
         validation_data=val_ds,
         epochs=1,
-        callbacks=[tensorboard_callback]
+        callbacks=[tensorboard_callback],
+        class_weight=class_weights
     )
+    epochs_trained = 1
 
-    # print(model.summary())
+    print(model.summary())
 
-    # history = model.fit(
-    #     train_ds,
-    #     validation_data=val_ds,
-    #     epochs=20,
-    #     callbacks=[tensorboard_callback]
-    # )
+    epochs = 20
+    epochs_trained += epochs
+    history = model.fit(
+        train_ds,
+        # validation_data=val_ds,
+        epochs=epochs,
+        # callbacks=[tensorboard_callback],
+        class_weight=class_weights
+    )
 
     """Save model weights"""
     if save_outputs:
         model.save(saved_model_path)
 
-        # weights only -> cannot be trained after loading
-        # model.save_weights(learned_weights)
-
-visualize_results(val_ds, model, save_outputs, class_names)
-
-"""
-
-custom training loop instead of using `model.fit`. 
-To learn more, visit https://www.tensorflow.org/guide/keras/writing_a_training_loop_from_scratch
-
-more about overfitting and how to reduce it in https://www.tensorflow.org/tutorials/keras/overfit_and_underfit
-"""
+visualize_results(val_ds, model, save_outputs, class_names, epochs_trained)

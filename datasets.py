@@ -5,7 +5,16 @@ import os
 import numpy as np
 
 
+def get_class_weights(class_counts_train):
+    num_classes = len(class_counts_train)
+    class_counts_sum = np.sum(class_counts_train)
+    class_counts_train = class_counts_sum / (num_classes * class_counts_train)
+    return dict(zip(range(0, num_classes), class_counts_train))
+
+
 def get_dataset(data_dir):
+    const_seed = 1234
+
     def get_label(file_path):
         # convert the path to a list of path components
         parts = tf.strings.split(file_path, os.path.sep)
@@ -28,24 +37,8 @@ def get_dataset(data_dir):
         return img, label
 
     def configure_for_performance(ds):
-        """
-        buffered prefetching = yield data without I/O blocking.
-        two important methods when loading data.
-
-        `.cache()` keeps the images in memory after they're loaded off disk during the first epoch.
-        This will ensure the dataset does not become a bottleneck while training your model. If your dataset is too large to fit into memory,
-        you can also use this method to create a performant on-disk cache.
-
-        `.prefetch()` overlaps data preprocessing and model execution while training.
-
-        [data performance guide](https://www.tensorflow.org/guide/data_performance#prefetching).
-
-
-        :param ds:
-        :return:
-        """
         ds = ds.cache()
-        ds = ds.shuffle(buffer_size=1000)
+        ds = ds.shuffle(buffer_size=1000, seed=const_seed)
         ds = ds.batch(batch_size)
         ds = ds.prefetch(buffer_size=autotune)
         return ds
@@ -55,37 +48,32 @@ def get_dataset(data_dir):
     img_width = 64
 
     list_ds = tf.data.Dataset.list_files(os.path.join(data_dir, '*/*.jpg'), shuffle=False)
-    image_count = len(list_ds)
+    image_count = len(list_ds)  # total (train + validation)
 
-    list_ds = list_ds.shuffle(image_count, reshuffle_each_iteration=False)
+    list_ds = list_ds.shuffle(image_count, reshuffle_each_iteration=False, seed=const_seed)
 
     """Compile a `class_names` list from the tree structure of the files."""
     data_dir_path = pathlib.Path(data_dir)
     class_names = np.array(sorted([item.name for item in data_dir_path.glob('*')]))
-    num_classes = len(class_names)
+    num_classes = len(class_names)  # total (train + validation)
 
     """Split train and validation:"""
-
     val_size = int(image_count * 0.2)
     train_ds = list_ds.skip(val_size)
     val_ds = list_ds.take(val_size)
-
-    """
-    # length of datasets
-    print(tf.data.experimental.cardinality(train_ds).numpy())
-    print(tf.data.experimental.cardinality(val_ds).numpy())
-    """
-
-    """Use `Dataset.map` to create a dataset of `image, label` pairs:"""
 
     autotune = tf.data.experimental.AUTOTUNE
 
     val_as_batch_dataset = val_ds
 
+    # map to labels, etc
     train_ds = train_ds.map(process_path, num_parallel_calls=autotune)
     val_ds = val_ds.map(process_path, num_parallel_calls=autotune)
+
+    _, class_counts = np.unique(np.array(list(train_ds), dtype='object')[:, 1], return_counts=True)
+    class_weights = get_class_weights(class_counts)  # training set only
 
     train_ds = configure_for_performance(train_ds)
     val_ds = configure_for_performance(val_ds)
 
-    return class_names, train_ds, val_ds, val_as_batch_dataset
+    return class_names, train_ds, val_ds, val_as_batch_dataset, class_weights
