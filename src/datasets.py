@@ -21,7 +21,7 @@ def get_dataset(data_dir):
         # The second to last is the class-directory
         one_hot = parts[-2] == class_names
         # Integer encode the label
-        return tf.argmax(one_hot)
+        return tf.argmax(tf.cast(one_hot, dtype='uint8'))
 
     def decode_img(img):
         # convert the compressed string to a 3D uint8 tensor
@@ -48,7 +48,7 @@ def get_dataset(data_dir):
     img_width = 64
 
     list_ds = tf.data.Dataset.list_files(os.path.join(data_dir, '*/*.jpg'), shuffle=False)
-    image_count = len(list_ds)  # total (train + validation)
+    image_count = len(list(list_ds))  # total (train + validation)
 
     list_ds = list_ds.shuffle(image_count, reshuffle_each_iteration=False, seed=const_seed)
 
