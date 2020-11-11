@@ -12,7 +12,6 @@ import datetime
 import models
 from datasets import get_dataset
 from show_results import visualize_results
-import numpy as np
 
 print(f'{tf.__version__=}')
 

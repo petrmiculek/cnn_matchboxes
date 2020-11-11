@@ -58,7 +58,7 @@ def train_preprocess(image, label):
 
 # https://cs230.stanford.edu/blog/datapipeline/
 
-data_dir = 'sirky'  # '/content/drive/My Drive/sirky'
+data_dir = '../sirky'  # '/content/drive/My Drive/sirky'
 (img_width, img_height) = (4032, 3024)
 batch_size = 16
 
