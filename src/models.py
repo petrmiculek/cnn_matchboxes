@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 
-def conv_tutorial(num_classes):
+def conv_tutorial(num_classes, input_dim=(64, 64, 3), batch_size=32):
     """
     So far using mostly this.
     Best accuracy=0.9809 after 44 epochs
@@ -9,6 +9,7 @@ def conv_tutorial(num_classes):
     """
     c = 32  # 32
     return tf.keras.Sequential([
+        tf.keras.layers.Input(shape=input_dim),
         tf.keras.layers.experimental.preprocessing.Rescaling(1. / 255),
         tf.keras.layers.Conv2D(c, 3, activation='relu', padding='same'),
         tf.keras.layers.MaxPooling2D(),

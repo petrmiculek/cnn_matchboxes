@@ -33,13 +33,24 @@ def draw_cross(img, center_pos, line_length=20, color=(255, 0, 0), width=4):
     cv.line(img, (x + line_length, y - line_length), (x - line_length, y + line_length), color, width)
 
 
-def crop_out(img, center_pos, side=None):
+def crop_out(img, x1, y1, x2, y2, side=None):
+    # x1, y1, x2, y2 = get_boundaries(center_pos, img, side)
+
+    # crop
+    try:
+        cropped = img[x1:x2, y1:y2].copy()
+    except IndexError as ex:
+        print(ex)
+        cropped = None
+
+    return cropped
+
+
+def get_boundaries(center_pos, img, side):
     if side is None:
         side = region_side
-
     radius = side // 2
     x, y = center_pos[0], center_pos[1]
-
     # numpy image [y, x]
     dim_x = img.shape[1]
     dim_y = img.shape[0]
@@ -47,24 +58,14 @@ def crop_out(img, center_pos, side=None):
     # value clipping
     if center_pos[0] - side < 0:
         x = radius
-
     if center_pos[1] - side < 0:
         y = radius
-
     if center_pos[0] + side >= dim_x:
         x = dim_x - radius - 1
-
     if center_pos[1] + side >= dim_y:
         y = dim_y - radius - 1
 
-    # crop
-    try:
-        cropped = img[y - radius: y + radius, x - radius: x + radius].copy()
-    except IndexError as ex:
-        print(ex)
-        cropped = None
-
-    return cropped
+    return x - radius, y - radius, x + radius, y + radius
 
 
 # not useful for training

@@ -29,6 +29,7 @@ def visualize_results(val_ds, model, save_outputs, class_names, epochs_trained):
 
     predictions = np.argmax(predictions_raw, axis=1)
     false_pred = np.where(labels != predictions)[0]  # reduce dimensions of a nested array
+    # Retrospecively, I am surprised that ^this^ even works
 
     """Show misclassified regions"""
     for idx in false_pred:

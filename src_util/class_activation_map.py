@@ -1,27 +1,33 @@
+import csv
+import os
+from math import sqrt
+
 import cv2 as cv
 import numpy as np
-import csv
-from collections import defaultdict
-import pathlib
-import os
-import random
-from math import sqrt
 import matplotlib.pyplot as plt
+
 from labels import load_labels, img_dims
-from image_regions import crop_out
+from image_regions import crop_out, get_boundaries
 
 import sys
 
 if not sys.warnoptions:
     import warnings
 
+    # openCV QT warning - current thread is not object thread
     warnings.simplefilter("ignore")
 
-region_side = 64
-scale = 0.5
-input_folder = 'sirky'
+# path = os.path.join(input_folder, '20201020_121210.jpg')
 
-path = os.path.join(input_folder, '20201020_121210.jpg')
+# debugging
+class_names = ['background',
+               'corner-bottom',
+               'corner-top',
+               'edge-bottom',
+               'edge-side',
+               'edge-top'
+               'intersection-side',
+               'intersection-top']
 
 
 def show_pred(model, batch, class_names):
@@ -39,12 +45,15 @@ def show_pred(model, batch, class_names):
         fig.axes.figure.show()
 
 
-def single_image(path):
-    global scale
-    global region_side
+def single_image(model, path):
+    from image_regions import crop_out, get_boundaries
+
+    region_side = 64
+    scale = 0.5
+
     img = cv.imread(path)
-    img = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))  # reversed indices, OK
-    dim = np.array((img.shape[1], img.shape[0]))
+    img = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))  # did not reverse indices
+    dim = np.array((img.shape[0], img.shape[1]))
 
     # diagonal = np.linspace(
     #     (region_side, region_side),
@@ -54,27 +63,54 @@ def single_image(path):
 
     # cv.namedWindow(':)', cv.WINDOW_GUI_NORMAL)
 
+    step_size = 64
+
+    # generate center points
+    # memo: radius = region_side // 2  => regions don't reach edges
     grid = np.mgrid[
-           region_side:dim[0] - region_side:10, \
-           region_side:dim[1] - region_side:10] \
+           region_side:dim[0] - region_side:step_size, \
+           region_side:dim[1] - region_side:step_size] \
         .reshape(2, -1).T
 
-    batch = []
-    for i, pos in enumerate(grid):
-        cutout = crop_out(img, pos)
-        batch.append(cutout)
+    canvas = np.zeros((len(class_names), *dim))  # channels (== classes), x, y
+    # print(canvas.shape)
+    for i, center in enumerate(grid):
+        x1, y1, x2, y2 = get_boundaries(center, img, region_side)
 
-        if i == 31:
-            break
+        cutout = crop_out(img, x1, y1, x2, y2)
 
-        if i % 32 == 31:
-            show_pred(model, batch, class_names)
-            batch = []
+        cutout_batch = np.expand_dims(cutout, axis=0)
 
-        # cv.imshow(':)', cutout)
-        # k = cv.waitKey(0)
+        if cutout.shape != (64, 64, 3):
+            print(cutout.shape, cutout_batch.shape)
+            print(center, '->', x1, y1, x2, y2)
+            continue
 
-    # cv.destroyAllWindows()
+        pred_raw = model.predict(cutout_batch)
+        pred = np.argmax(pred_raw)
+        try:
+            canvas[
+            pred,
+            x1:x2,
+            y1:y2] += 1
+        except Exception as exc:
+            print(exc)
+            continue
 
-    # todo
-    # save predictions in a grid -> activation map
+    canvas[canvas > 255] = 255
+
+    # activation map per class
+    fig, axes = plt.subplots(ncols=1, nrows=8,
+                             constrained_layout=True,
+                             figsize=(16, 2)
+                             )
+
+    for i, name in enumerate(class_names):
+        axes[i] = plt.subplot(1, 8, i + 1)
+        axes[i] = plt.imshow(canvas[i].astype("uint8").T)
+        axes[i].axes.axis("off")
+        axes[i].axes.set_title(name)
+
+    fig.show()
+
+    return canvas
