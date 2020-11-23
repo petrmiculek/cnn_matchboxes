@@ -69,13 +69,13 @@ else:
 
     print(model.summary())
 
-    epochs = 20
+    epochs = 100
     epochs_trained += epochs
     history = model.fit(
         train_ds,
-        # validation_data=val_ds,
+        validation_data=val_ds,
         epochs=epochs,
-        # callbacks=[tensorboard_callback],
+        callbacks=[tensorboard_callback],
         class_weight=class_weights
     )
 

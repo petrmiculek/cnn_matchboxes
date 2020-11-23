@@ -15,6 +15,7 @@ def random_color():
     return randint(0, 255), randint(0, 255), randint(0, 255)
 
 
+# different from image_regions -- investigate
 def draw_cross(img, center_pos, line_length=20, color=(255, 0, 0), width=8):
     global scale
     width = int(width * scale)

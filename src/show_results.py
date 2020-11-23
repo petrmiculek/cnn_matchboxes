@@ -25,7 +25,7 @@ def visualize_results(val_ds, model, save_outputs, class_names, epochs_trained):
     imgs = np.vstack(imgs)  # -> 4D [img_count x width x height x channels]
     labels = np.hstack(labels)  # -> 1D [img_count]
 
-    predictions_raw = model.predict(tf.convert_to_tensor(imgs, dtype=tf.float32))  # use uint8 instead?
+    predictions_raw = model.predict(tf.convert_to_tensor(imgs, dtype=tf.float32))  # todo use uint8 instead?
 
     predictions = np.argmax(predictions_raw, axis=1)
     false_pred = np.where(labels != predictions)[0]  # reduce dimensions of a nested array

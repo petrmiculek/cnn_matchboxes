@@ -22,6 +22,7 @@ random.seed(1234)
 #     return randint(0, 255), randint(0, 255), randint(0, 255)
 
 
+# different from show_images_labelled -- investigate
 def draw_cross(img, center_pos, line_length=20, color=(255, 0, 0), width=4):
     global scale
     width = max(int(width * scale), 1)
