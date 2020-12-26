@@ -46,6 +46,15 @@ def show_pred(model, batch, class_names):
 
 
 def single_image(model, path):
+    """
+    Get Heatmap showing region classifications
+    (manual sliding window approach)
+    did not work well
+
+    :param model:
+    :param path:
+    :return:
+    """
     from image_regions import crop_out, get_boundaries
 
     region_side = 64

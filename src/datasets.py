@@ -19,6 +19,7 @@ def get_dataset(data_dir):
         # convert the path to a list of path components
         parts = tf.strings.split(file_path, os.path.sep)
         # The second to last is the class-directory
+        # (purpose = class-number-independent encoding)
         one_hot = parts[-2] == class_names
         # Integer encode the label
         return tf.argmax(tf.cast(one_hot, dtype='uint8'))

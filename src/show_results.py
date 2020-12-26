@@ -25,11 +25,12 @@ def visualize_results(val_ds, model, save_outputs, class_names, epochs_trained):
     imgs = np.vstack(imgs)  # -> 4D [img_count x width x height x channels]
     labels = np.hstack(labels)  # -> 1D [img_count]
 
-    predictions_raw = model.predict(tf.convert_to_tensor(imgs, dtype=tf.float32))  # todo use uint8 instead?
+    predictions_raw = model.predict(tf.convert_to_tensor(imgs, dtype=tf.uint8))
+    predictions_juice = tf.squeeze(predictions_raw)  # squeeze potentially more dimensions
+    predictions = tf.argmax(predictions_juice, axis=1)
 
-    predictions = np.argmax(predictions_raw, axis=1)
     false_pred = np.where(labels != predictions)[0]  # reduce dimensions of a nested array
-    # Retrospecively, I am surprised that ^this^ even works
+    # Retrospectively, I am surprised that ^this^ even works
 
     """Show misclassified regions"""
     for idx in false_pred:
@@ -43,6 +44,7 @@ def visualize_results(val_ds, model, save_outputs, class_names, epochs_trained):
         fig.axes.axis("off")
 
         if save_outputs:
+            # todo fix according to IZV guidelines
             plot_path = os.path.join(misclassified_folder,
                                      '{}_{}_x_{}'.format(misclassified_counter, label_true, label_predicted))
             fig.savefig(plot_path, bbox_inches='tight')
@@ -68,3 +70,28 @@ def visualize_results(val_ds, model, save_outputs, class_names, epochs_trained):
 
     if save_outputs:
         fig_cm.savefig(os.path.join(misclassified_folder, 'confusion_matrix.png'), bbox_inches='tight')
+
+    """More metrics"""
+    maxes = np.max(predictions_juice, axis=1)
+    confident = len(maxes[maxes > 0.9])
+    undecided = len(maxes[maxes < 0.2])
+    undecided_idx = np.argwhere(maxes < 0.2)
+
+    # print(labels.shape, predictions.shape)  # debug
+    print('Accuracy:', 100.0 * (1 - len(false_pred) / len(predictions)), '%')
+    print('Prediction types:\n',
+          '\tConfident: {}\n'.format(confident),
+          '\tUndecided: {}'.format(undecided))
+
+    """
+    for i in undecided_idx:
+        fig = plt.imshow(np.squeeze(imgs[i]).astype("uint8"))
+        fig.axes.figure.show()
+    """
+    """
+    # print all predictions
+    for i, img in enumerate(predictions_juice.numpy()):
+        print('{}: '.format(i), end='')
+        print(["{0:0.2f}".format(k) for k in img])
+    """
+
