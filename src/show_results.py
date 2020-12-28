@@ -95,3 +95,62 @@ def visualize_results(val_ds, model, save_outputs, class_names, epochs_trained):
         print(["{0:0.2f}".format(k) for k in img])
     """
 
+
+def predict_full_image(model, class_names):
+    """get prediction for full image (class activations map)"""
+    img_path = '20201020_121210.jpg'
+    full_path = 'sirky/' + img_path
+    scale = 0.5
+
+    # open/process image
+    img = cv.imread(full_path)
+    img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
+    img = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))  # reversed indices, OK
+    img_batch = np.expand_dims(img, 0)
+
+    # predict
+    predictions_raw = model.predict(tf.convert_to_tensor(img_batch, dtype=tf.uint8))
+    predictions = tf.squeeze(predictions_raw).numpy()
+    predictions_maxes = np.argmax(predictions_raw, axis=-1)  # tf
+
+    # gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
+    class_activations = []
+
+    for i in range(0, num_classes):
+        prediction = predictions[:, :, i]
+        prediction = cv.resize(prediction, (img.shape[1], img.shape[0]))  # extrapolate predictions
+        prediction = np.uint8(255 * prediction)
+        # prediction = np.stack((prediction,)*3, axis=-1)  # broadcast to 3 channels
+        # prediction = cv.applyColorMap(prediction, cv.COLORMAP_VIRIDIS)  # needs to be reversed (not doing that)
+
+        """ignoring image overlaying for now"""
+        # prediction = np.uint8(prediction * 0.4 + img)
+        # prediction = np.uint64(img) * prediction
+        # prediction = np.clip(prediction, 0, 255)
+        # prediction = np.float64(superimposed_img / 255)
+
+        class_activations.append(prediction)
+
+    # class_activations.append(np.float64(img / 255))
+    class_activations.append(img)
+    class_names = np.append(class_names, 'full-image')
+
+    fig, axes = plt.subplots(nrows=3, ncols=3, figsize=(10, 10), )
+    # constrained_layout=True)
+    fig.suptitle('Class Activations Map')
+    fig.subplots_adjust(right=0.85, left=0.05)
+    cbar_ax = fig.add_axes([0.1, 0.03, 0.8, 0.02])
+
+    for i in range(9):
+        ax = axes[i // 3, i % 3].imshow(class_activations[i], cmap=plt.get_cmap('viridis'))
+        axes[i // 3, i % 3].axis('off')
+        axes[i // 3, i % 3].set_title(class_names[i])
+        if i == 0:
+            axes[i // 3, i % 3].figure.colorbar(mappable=ax,
+                                                cax=cbar_ax,
+                                                orientation='horizontal')
+
+    fig.tight_layout()
+    fig.show()
+
+

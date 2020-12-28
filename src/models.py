@@ -37,49 +37,13 @@ def fully_conv_tutorial(num_classes, input_dim=(64, 64, 3)):
     ], name='sequential_3fullyConv_{}channels'.format(c))
 
 
-def fully_conv(num_classes, training_dim=64):
+def fully_conv(num_classes):
     """
     only trains when:
         Flatten is present
         Input(shape=(64, 64, 3))
 
     plateau fast at .68
-    """
-
-    """
-    return tf.keras.Sequential([
-        tf.keras.layers.Input(shape=(64, 64, 3)),
-        tf.keras.layers.experimental.preprocessing.Rescaling(1. / 255),
-
-        tf.keras.layers.Conv2D(1 * c, 3, activation='relu', padding='same'),
-        tf.keras.layers.MaxPooling2D(),
-
-        tf.keras.layers.Conv2D(2 * c, 3, activation='relu', padding='same'),
-        tf.keras.layers.MaxPooling2D(),
-
-        tf.keras.layers.Conv2D(2 * c, 3, activation='relu', padding='same'),
-        tf.keras.layers.MaxPooling2D(),
-
-        tf.keras.layers.Conv2D(4 * c, 3, activation='relu', padding='same'),
-        tf.keras.layers.MaxPooling2D(),
-
-        tf.keras.layers.Conv2D(4 * c, 3, activation='relu', padding='same'),
-        tf.keras.layers.MaxPooling2D(),
-
-        tf.keras.layers.Conv2D(4 * c, 3, activation='relu', padding='same'),
-        tf.keras.layers.MaxPooling2D(),
-
-        # [1 x 1] here
-
-        tf.keras.layers.Conv2D(num_classes, 1, activation='relu'),  # [1 x 1 x many] -> [1 x 1 x C]
-
-        tf.keras.layers.Softmax(),
-        tf.keras.layers.Flatten(),
-
-        # seems relevant
-        # https://stackoverflow.com/questions/43033436/how-to-do-point-wise-categorical-crossentropy-loss-in-keras
-
-    ], name='sequential_6fully_conv_{}channels'.format(c))
     """
 
     he = tf.keras.initializers.he_normal()
@@ -92,7 +56,7 @@ def fully_conv(num_classes, training_dim=64):
     name = name.replace(' ', '_').replace('[', '_').replace(']', '_')  # list elements contain spaces
 
     model = tf.keras.Sequential(name=name)
-    model.add(tf.keras.Input(shape=(64, 64, 3)))
+    model.add(tf.keras.Input(shape=(None, None, 3)))
     model.add(tf.keras.layers.experimental.preprocessing.Rescaling(1. / 255))
 
     for i in range(layers):
