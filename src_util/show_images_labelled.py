@@ -7,9 +7,22 @@ import os
 from labels import load_labels, img_dims
 from random import randint
 
+"""
+Show annotated images
 
-# Dead development branch - if you want to copy code, look into 'image_regions.py'
-
+Controls:
+    A:  <-
+        previous
+           
+    D:  -> 
+        next
+    
+    Q:  quit
+    
+    
+Dead development branch - if you want to copy code, look into 'image_regions.py'
+"""
+window_name = 'Q=Quit, A=Prev, D=Next'
 
 def random_color():
     return randint(0, 255), randint(0, 255), randint(0, 255)
@@ -28,7 +41,7 @@ def draw_cross(img, center_pos, line_length=20, color=(255, 0, 0), width=8):
 
 if __name__ == '__main__':
 
-    show_images = False
+    show_images = True
     save_images = not show_images
 
     scale = 1  # 0.25
@@ -40,10 +53,11 @@ if __name__ == '__main__':
     if not os.path.isdir(output_folder):
         os.makedirs(output_folder, exist_ok=True)
 
+    # dict of labelled_files
     labels = load_labels(input_folder + os.sep + labels_file, use_full_path=False)
 
     if show_images:
-        cv.namedWindow(':)', cv.WINDOW_GUI_NORMAL)
+        cv.namedWindow(window_name, cv.WINDOW_GUI_NORMAL)
 
     cat_colors = {
         'corner-top': (200, 50, 50),
@@ -56,11 +70,14 @@ if __name__ == '__main__':
         'default': (150, 150, 150),
     }
 
-    for file in labels:  # dict of labelled_files
+    images_total = len(labels)
+    labels_keys = list(labels)
+    i = 0
+    while True:
+        file = labels_keys[i]
+
         img = cv.imread(input_folder + os.sep + file)
         img = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))  # reversed indices, OK
-
-        dims = img_dims[file]
 
         # draw labels
         for category in labels[file]:  # dict of categories
@@ -74,13 +91,19 @@ if __name__ == '__main__':
                 print(path)
 
         if show_images:
-            cv.putText(img, file, (img.shape[1] // 5 * 4, img.shape[0] // 12 * 11),
+            cv.putText(img, '{} {}/{}'.format(file, i + 1, images_total), (img.shape[1] * 3 // 4, img.shape[0] * 11 // 12),
                        cv.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255),
                        5, cv.LINE_AA)
-            cv.imshow(':)', img)
+            cv.imshow(window_name, img)
 
             k = cv.waitKey(0)
-            if k == ord("q"):
+            if k == ord("a") and i > 0:
+                i -= 1
+
+            if k == ord("d") and i < images_total - 1:
+                i += 1
+
+            if k == ord("q") or i >= images_total - 1:
                 break
 
     if show_images:

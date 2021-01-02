@@ -84,7 +84,7 @@ def single_image(model, path):
     canvas = np.zeros((len(class_names), *dim))  # channels (== classes), x, y
     # print(canvas.shape)
     for i, center in enumerate(grid):
-        x1, y1, x2, y2 = get_boundaries(center, img, region_side)
+        x1, y1, x2, y2 = get_boundaries(img, center)
 
         cutout = crop_out(img, x1, y1, x2, y2)
 

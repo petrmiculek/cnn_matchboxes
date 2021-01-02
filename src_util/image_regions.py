@@ -12,9 +12,10 @@ from math import sqrt
 region_side = 64
 scale = 0.5
 input_folder = 'sirky'
-output_folder = "image_regions_{}_{:03d}".format(region_side, int(scale*100))
+output_folder = "image_regions_{}_{:03d}".format(region_side, int(scale * 100))
 labels_file = 'labels.csv'
 
+radius = region_side // 2
 random.seed(1234)
 
 
@@ -33,10 +34,7 @@ def draw_cross(img, center_pos, line_length=20, color=(255, 0, 0), width=4):
     cv.line(img, (x + line_length, y - line_length), (x - line_length, y + line_length), color, width)
 
 
-def crop_out(img, x1, y1, x2, y2, side=None):
-    # x1, y1, x2, y2 = get_boundaries(center_pos, img, side)
-
-    # crop
+def crop_out(img, x1, y1, x2, y2):
     try:
         cropped = img[x1:x2, y1:y2].copy()
     except IndexError as ex:
@@ -46,26 +44,31 @@ def crop_out(img, x1, y1, x2, y2, side=None):
     return cropped
 
 
-def get_boundaries(center_pos, img, side):
-    if side is None:
-        side = region_side
-    radius = side // 2
-    x, y = center_pos[0], center_pos[1]
+def get_boundaries(img, center_pos):
+    """
+
+    :param center_pos: [x, y]
+    :param img: [y, x]
+    :return: top-left and bottom-right coordinates for region
+    """
+
     # numpy image [y, x]
     dim_x = img.shape[1]
     dim_y = img.shape[0]
 
     # value clipping
-    if center_pos[0] - side < 0:
-        x = radius
-    if center_pos[1] - side < 0:
-        y = radius
-    if center_pos[0] + side >= dim_x:
-        x = dim_x - radius - 1
-    if center_pos[1] + side >= dim_y:
-        y = dim_y - radius - 1
+    x = max(center_pos[0], radius)
+    x = min(x, dim_x - radius - 1)
+
+    y = max(center_pos[1], radius)
+    y = min(y, dim_y - radius - 1)
 
     return x - radius, y - radius, x + radius, y + radius
+
+
+def crop_out_from_center(img, center_pos):
+    x1, x2, y1, y2 = get_boundaries(img, center_pos)
+    return crop_out(img, x1, x2, y1, y2)
 
 
 # not useful for training
@@ -97,10 +100,12 @@ if __name__ == '__main__':
                 os.makedirs(output_folder + os.sep + category, exist_ok=True)
 
             for label_pos in labels[file][category]:  # list of labels
-                label_pos_scaled = int(int(label_pos[0]) * scale), int(int(label_pos[1]) * scale)
+                label_pos_scaled = int(int(label_pos[1]) * scale), int(int(label_pos[0]) * scale)
+                # ^ inner int() does parsing, not rounding
+
                 file_labels.append(label_pos_scaled)
-                # generate region proposals
-                region = crop_out(img, label_pos_scaled)
+
+                region = crop_out_from_center(img, label_pos_scaled)
 
                 # save image
                 region_path = output_folder + os.sep + category + os.sep  # per category folder
@@ -119,22 +124,23 @@ if __name__ == '__main__':
             repeat = True
             while repeat:
                 repeat = False
-                # generate position
-                pos = \
-                    int(random.randint(region_side // 2, img.shape[1] - region_side // 2) * scale), \
-                    int(random.randint(region_side // 2, img.shape[0] - region_side // 2) * scale)
+                # generate position (region-center)
+                pos = int(random.randint(radius, img.shape[0] - radius)), \
+                      int(random.randint(radius, img.shape[1] - radius))
+                # todo removed scaling here
 
                 # test that position is not too close to an existing label
                 for label_pos in file_labels:
-                    if euclid_dist(pos, label_pos) < (region_side // 2):
-                        # warning - does not take scale into account
+                    # file_labels positions are already properly scaled
+                    if euclid_dist(pos, label_pos) < region_side:
                         repeated += 1
                         repeat = True
 
-            region_background = crop_out(img, pos)
+            region_background = crop_out_from_center(img, pos)
             region_path = output_folder + os.sep + category + os.sep  # per category folder
             region_filename = file.split('.')[0] + '_(' + str(pos[0]) + ',' + str(pos[1]) + ').jpg'
 
             tmp = cv.imwrite(region_path + region_filename, region_background)
 
-        print(repeated)
+        # how many generated positions were wrong (= too close to keypoints)
+        # print(repeated)

@@ -22,6 +22,9 @@ def load_labels(path, use_full_path=True):
     with open(path) as f:  # os.curdir + os.sep + path + os.sep +
         csv_data = csv.reader(f, delimiter=',')
         for line in csv_data:
+            if len(line) == 0:
+                continue
+
             label_name, x, y, img_name, img_w, img_h = line
 
             if use_full_path:
