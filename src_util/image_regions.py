@@ -9,10 +9,10 @@ import random
 from math import sqrt
 
 # global parameters
-region_side = 64
-scale = 0.5
+region_side = 32
+scale = 0.25
 input_folder = 'sirky'
-output_folder = "image_regions_{}_{:03d}".format(region_side, int(scale * 100))
+output_folder = 'image_regions_{}_{:03d}'.format(region_side, int(scale * 100))
 labels_file = 'labels.csv'
 
 radius = region_side // 2

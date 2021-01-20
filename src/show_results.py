@@ -4,6 +4,7 @@ import seaborn as sns
 import tensorflow as tf
 from matplotlib import pyplot as plt
 from sklearn.metrics import confusion_matrix
+import cv2 as cv
 
 
 def visualize_results(val_ds, model, save_outputs, class_names, epochs_trained):
@@ -74,8 +75,8 @@ def visualize_results(val_ds, model, save_outputs, class_names, epochs_trained):
     """More metrics"""
     maxes = np.max(predictions_juice, axis=1)
     confident = len(maxes[maxes > 0.9])
-    undecided = len(maxes[maxes < 0.2])
-    undecided_idx = np.argwhere(maxes < 0.2)
+    undecided = len(maxes[maxes <= 0.126])
+    undecided_idx = np.argwhere(maxes <= 0.126)
 
     # print(labels.shape, predictions.shape)  # debug
     print('Accuracy:', 100.0 * (1 - len(false_pred) / len(predictions)), '%')
@@ -96,7 +97,7 @@ def visualize_results(val_ds, model, save_outputs, class_names, epochs_trained):
     """
 
 
-def predict_full_image(model, class_names):
+def predict_full_image(model, class_names, save_outputs):
     """get prediction for full image (class activations map)"""
     img_path = '20201020_121210.jpg'
     full_path = 'sirky/' + img_path
@@ -115,6 +116,7 @@ def predict_full_image(model, class_names):
 
     # gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
     class_activations = []
+    num_classes = len(class_names)
 
     for i in range(0, num_classes):
         prediction = predictions[:, :, i]
@@ -136,13 +138,12 @@ def predict_full_image(model, class_names):
     class_names = np.append(class_names, 'full-image')
 
     fig, axes = plt.subplots(nrows=3, ncols=3, figsize=(10, 10), )
-    # constrained_layout=True)
     fig.suptitle('Class Activations Map')
     fig.subplots_adjust(right=0.85, left=0.05)
     cbar_ax = fig.add_axes([0.1, 0.03, 0.8, 0.02])
 
     for i in range(9):
-        ax = axes[i // 3, i % 3].imshow(class_activations[i], cmap=plt.get_cmap('viridis'))
+        ax = axes[i // 3, i % 3].imshow(class_activations[i], cmap=plt.get_cmap('viridis'), vmin=0, vmax=255)
         axes[i // 3, i % 3].axis('off')
         axes[i // 3, i % 3].set_title(class_names[i])
         if i == 0:
@@ -153,4 +154,34 @@ def predict_full_image(model, class_names):
     fig.tight_layout()
     fig.show()
 
+    if save_outputs:
+        fig_cm.savefig(os.path.join('outputs', 'heatmap_{}.png'.format(model.name)),
+                       bbox_inches='tight')
 
+
+"""
+Unused, dump:
+
+# https://keras.io/guides/transfer_learning/
+resnet = tf.keras.applications.ResNet50(
+    include_top=False,
+    weights="imagenet",
+    # weights=None,
+    input_shape=(64, 64, 3),
+    pooling='avg',  # average pooling into single prediction
+    classes=2)  # does not seem to have any meaning
+resnet.trainable = False
+
+inputs = tf.keras.Input(shape=(64, 64, 3))
+# We make sure that the base_model is running in inference mode here,
+# by passing `training=False`. This is important for fine-tuning, as you will
+# learn in a few paragraphs.
+x = resnet(inputs, training=False)
+# Convert features of shape `base_model.output_shape[1:]` to vectors
+# x = tf.keras.layers.GlobalAveragePooling2D()(x)
+# A Dense classifier with a single unit (binary classification)
+# x = tf.keras.layers.Flatten()(x)
+# outputs = tf.keras.layers.Dense(num_classes, activation='softmax')(x)
+# outputs = tf.keras.layers.Softmax()(x)
+model = tf.keras.Model(inputs, x)
+"""

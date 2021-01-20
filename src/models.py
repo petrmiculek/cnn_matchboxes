@@ -3,6 +3,47 @@ import numpy as np
 from math import log2
 
 
+def fully_conv(num_classes, weight_init_idx=0):
+    """
+    Currently used model
+
+    Accuracy does not seem to improve during training.
+
+    """
+    weight_init = [tf.keras.initializers.he_uniform(),
+                   tf.keras.initializers.he_normal(),
+                   tf.keras.initializers.glorot_uniform()]
+    print('Weight init:[{}] = {}'.format(weight_init_idx, weight_init[weight_init_idx].distribution))
+
+    channels_base = 64
+    width = np.array([1, 2, 2, 4, 4, 4])
+    layers = 6
+    name = 'FCN_layers{}_channels{}_init{}'.format(layers, width * channels_base, weight_init_idx)
+    name = name.replace(' ', '_').replace('[', '_').replace(']', '_')  # list elements contain spaces
+
+    model = tf.keras.Sequential(name=name)
+    model.add(tf.keras.Input(shape=(None, None, 3)))
+    model.add(tf.keras.layers.experimental.preprocessing.Rescaling(1. / 255))
+
+    for i in range(layers):
+        model.add(tf.keras.layers.BatchNormalization())
+        model.add(tf.keras.layers.Conv2D(width[i] * channels_base,
+                                         3,
+                                         activation='relu',
+                                         padding='same',
+                                         kernel_initializer=weight_init[weight_init_idx],
+                                         ))
+        model.add(tf.keras.layers.MaxPooling2D())
+
+    # [1 x 1 x C]
+
+    model.add(tf.keras.layers.Conv2D(128, 1, activation='relu'))
+    model.add(tf.keras.layers.Conv2D(num_classes, 1, activation='relu'))
+    model.add(tf.keras.layers.Softmax())
+
+    return model
+
+
 def fully_conv_tutorial(num_classes, input_dim=(64, 64, 3)):
     """
     does not train at all
@@ -35,47 +76,6 @@ def fully_conv_tutorial(num_classes, input_dim=(64, 64, 3)):
         tf.keras.layers.Softmax(),
         tf.keras.layers.Flatten()
     ], name='sequential_3fullyConv_{}channels'.format(c))
-
-
-def fully_conv(num_classes):
-    """
-    only trains when:
-        Flatten is present
-        Input(shape=(64, 64, 3))
-
-    plateau fast at .68
-    """
-
-    he = tf.keras.initializers.he_normal()
-    # he = tf.keras.initializers.glorot_uniform()  # ablation testing
-
-    channels_base = 32
-    width = np.array([1, 2, 2, 4, 4, 4])
-    layers = 6
-    name = 'FCN_layers{}_channels{}'.format(layers, width * channels_base)
-    name = name.replace(' ', '_').replace('[', '_').replace(']', '_')  # list elements contain spaces
-
-    model = tf.keras.Sequential(name=name)
-    model.add(tf.keras.Input(shape=(None, None, 3)))
-    model.add(tf.keras.layers.experimental.preprocessing.Rescaling(1. / 255))
-
-    for i in range(layers):
-        model.add(tf.keras.layers.BatchNormalization())
-        model.add(tf.keras.layers.Conv2D(width[i] * channels_base,
-                                         3,
-                                         activation='relu',
-                                         padding='same',
-                                         kernel_initializer=he,
-                                         ))
-        model.add(tf.keras.layers.MaxPooling2D())
-
-    # [1 x 1 x C]
-
-    model.add(tf.keras.layers.Conv2D(num_classes, 1, activation='relu'))
-    model.add(tf.keras.layers.Softmax())
-    # model.add(tf.keras.layers.Flatten())
-
-    return model
 
 
 def conv_tutorial_deeper(num_classes, first_conv=32):

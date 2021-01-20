@@ -2,19 +2,15 @@
 """
 https://colab.research.google.com/drive/1F28FEGGLmy8-jW9IaOo60InR9VQtPbmG
 
-todo:
-fix annotation sirky (1 img)
-
 21. 12.
 zkus znovu projit tutorial na fine-tuning, pripadne grad cam
-
 
 
 """
 import os
 import sys
 
-# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 import datetime
 
@@ -31,10 +27,11 @@ import models
 from IPython.display import Image, display
 import matplotlib.cm as cm
 
-
 print(f'{tf.__version__=}')
 
-print(tf.config.list_physical_devices('GPU'))  # show available GPUs
+if len(tf.config.list_physical_devices('GPU')) == 0:
+    print('no available GPUs')
+    sys.exit(0)
 
 # from google.colab import drive
 # drive.mount('/content/drive')
@@ -55,36 +52,67 @@ logs_folder = 'logs'
 os.makedirs(logs_folder, exist_ok=True)
 
 logdir = os.path.join(logs_folder, datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
-tensorboard_callback = tf.keras.callbacks.TensorBoard(logdir, histogram_freq=1)
+file_writer = tf.summary.create_file_writer(logdir + "/metrics")
+file_writer.set_as_default()
+tensorboard_callback = tf.keras.callbacks.TensorBoard(logdir, histogram_freq=1, profile_batch='300,400')
 
 """ Create/Load a model """
-model = models.fully_conv(num_classes)
+model = models.fully_conv(num_classes, weight_init_idx=1)
 
-print(model.summary())
+# unused
+# learning_rate = CustomSchedule(d_model)
+# optimizer = tf.keras.optimizers.Adam(learning_rate)
 
-# sys.exit(0)
+# print(model.summary())
+not_printed = True
+
+scce_base = tf.losses.SparseCategoricalCrossentropy(from_logits=False)
+
+accu_base = tf.metrics.SparseCategoricalAccuracy()
+
+
+def accu(y_true, y_pred):
+    """
+    SparseCategoricalAccuracy metric
+
+    input reshaped from (Batch, 1, 1, 8) to (Batch, 8)
+    """
+
+    """
+    # unused
+    global not_printed
+    if not_printed:
+        print([tf.shape(y_pred)[k] for k in range(4)])
+        not_printed = False
+    """
+
+    y_pred_reshaped = tf.reshape(y_pred, [tf.shape(y_pred)[0], tf.shape(y_pred)[3]])
+    return accu_base(y_true, y_pred_reshaped)
+
 
 saved_model_path = os.path.join('models_saved', model.name)
 
 # Load saved model
 load_module = False
+epochs_trained = 0
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 
 if load_module:
     model = tf.keras.models.load_model(saved_model_path)
-    epochs_trained = 0
 else:
     """ Train the model"""
     model.compile(
         optimizer='adam',
-        loss=tf.losses.SparseCategoricalCrossentropy(from_logits=True),
-        metrics=['accuracy', 'sparse_categorical_crossentropy'])
+        loss=scce_base,
+        metrics=[accu, ])  # tf.keras.metrics.SparseCategoricalAccuracy(), 'sparse_categorical_crossentropy'
 
-    epochs = 20
+    epochs = 40
 
     history = model.fit(
         train_ds,
         validation_data=val_ds,
-        epochs=epochs,
+        epochs=(epochs + epochs_trained),
+        initial_epoch=epochs_trained,
         callbacks=[
             tensorboard_callback,
             tf.keras.callbacks.EarlyStopping(monitor='val_loss',
@@ -93,41 +121,47 @@ else:
                    ],
         class_weight=class_weights
     )
-
-    epochs_trained = len(history.epoch)
+    epochs_trained += epochs
 
     """Save model weights"""
     if save_outputs:
-        model.save(saved_model_path)
+        try:
+            model.save(saved_model_path)
+        except Exception as e:
+            print(e)
 
-# false predictions + confusion map
-visualize_results(val_ds, model, save_outputs, class_names, epochs_trained)
-visualize_results(train_ds, model, save_outputs, class_names, epochs_trained)
+    # false predictions + confusion map
+    visualize_results(val_ds, model, save_outputs, class_names, epochs_trained)
+    visualize_results(train_ds, model, save_outputs, class_names, epochs_trained)
 
-"""Predict full image"""
-predict_full_image(model, class_names)
+    """Predict full image"""
+    predict_full_image(model, class_names, save_outputs)
+
 
 """
-# https://keras.io/guides/transfer_learning/
-resnet = tf.keras.applications.ResNet50(
-    include_top=False,
-    weights="imagenet",
-    # weights=None,
-    input_shape=(64, 64, 3),
-    pooling='avg',  # average pooling into single prediction
-    classes=2)  # does not seem to have any meaning
-resnet.trainable = False
+class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
+  def __init__(self, d_model, warmup_steps=10):
+    super(CustomSchedule, self).__init__()
 
-inputs = tf.keras.Input(shape=(64, 64, 3))
-# We make sure that the base_model is running in inference mode here,
-# by passing `training=False`. This is important for fine-tuning, as you will
-# learn in a few paragraphs.
-x = resnet(inputs, training=False)
-# Convert features of shape `base_model.output_shape[1:]` to vectors
-# x = tf.keras.layers.GlobalAveragePooling2D()(x)
-# A Dense classifier with a single unit (binary classification)
-# x = tf.keras.layers.Flatten()(x)
-# outputs = tf.keras.layers.Dense(num_classes, activation='softmax')(x)
-# outputs = tf.keras.layers.Softmax()(x)
-model = tf.keras.Model(inputs, x)
+    self.d_model = d_model
+    self.d_model = tf.cast(self.d_model, tf.float32)
+
+    self.warmup_steps = warmup_steps
+
+  def __call__(self, step):
+    arg1 = tf.math.rsqrt(step)
+    arg2 = step * (self.warmup_steps ** -1.5)
+
+    return tf.math.rsqrt(self.d_model) * tf.math.minimum(arg1, arg2)
+
+
+# unused
+def scheduler(epoch, lr, start=10, decay=-0.1):
+    if epoch < start:
+        return lr
+    else:
+        return lr * tf.math.exp(decay)
+
+
+lr_sched = tf.keras.callbacks.LearningRateScheduler(scheduler)
 """
