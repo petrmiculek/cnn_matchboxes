@@ -8,7 +8,6 @@ import cv2 as cv
 
 
 def visualize_results(val_ds, model, save_outputs, class_names, epochs_trained):
-
     show_misclassified_regions = False
 
     misclassified_folder = 'missclassified_regions_{}_e{}'.format(model.name, len(model.losses))
@@ -31,7 +30,6 @@ def visualize_results(val_ds, model, save_outputs, class_names, epochs_trained):
     predictions = tf.argmax(predictions_juice, axis=1)
 
     false_pred = np.where(labels != predictions)[0]  # reduce dimensions of a nested array
-    # Retrospectively, I am surprised that ^this^ even works
 
     """Show misclassified regions"""
     for idx in false_pred:
@@ -45,10 +43,12 @@ def visualize_results(val_ds, model, save_outputs, class_names, epochs_trained):
         fig.axes.axis("off")
 
         if save_outputs:
-            # todo fix according to IZV guidelines
-            plot_path = os.path.join(misclassified_folder,
-                                     '{}_{}_x_{}'.format(misclassified_counter, label_true, label_predicted))
-            fig.savefig(plot_path, bbox_inches='tight')
+            fig_location = os.path.join(misclassified_folder,
+                                        '{}_{}_x_{}'.format(misclassified_counter, label_true, label_predicted))
+            d = os.path.dirname(fig_location)
+            if d and not os.path.isdir(d):
+                os.makedirs(d)
+            fig.savefig(fig_location, bbox_inches='tight')
 
         if show_misclassified_regions:
             fig.axes.figure.show()
@@ -75,8 +75,8 @@ def visualize_results(val_ds, model, save_outputs, class_names, epochs_trained):
     """More metrics"""
     maxes = np.max(predictions_juice, axis=1)
     confident = len(maxes[maxes > 0.9])
-    undecided = len(maxes[maxes <= 0.126])
-    undecided_idx = np.argwhere(maxes <= 0.126)
+    undecided = len(maxes[maxes <= 0.125])
+    # undecided_idx = np.argwhere(maxes <= 0.125)
 
     # print(labels.shape, predictions.shape)  # debug
     print('Accuracy:', 100.0 * (1 - len(false_pred) / len(predictions)), '%')
@@ -97,7 +97,7 @@ def visualize_results(val_ds, model, save_outputs, class_names, epochs_trained):
     """
 
 
-def predict_full_image(model, class_names, save_outputs):
+def predict_full_image(model, class_names, output_location):
     """get prediction for full image (class activations map)"""
     img_path = '20201020_121210.jpg'
     full_path = 'sirky/' + img_path
@@ -112,51 +112,48 @@ def predict_full_image(model, class_names, save_outputs):
     # predict
     predictions_raw = model.predict(tf.convert_to_tensor(img_batch, dtype=tf.uint8))
     predictions = tf.squeeze(predictions_raw).numpy()
-    predictions_maxes = np.argmax(predictions_raw, axis=-1)  # tf
+    # predictions_maxes = np.argmax(predictions_raw, axis=-1)
 
-    # gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
+    predictions = np.uint8(255 * predictions)
+    predictions = cv.resize(predictions, (img.shape[1], img.shape[0]))  # extrapolate predictions
+
     class_activations = []
     num_classes = len(class_names)
+    heatmap_alpha = 0.5
 
     for i in range(0, num_classes):
-        prediction = predictions[:, :, i]
-        prediction = cv.resize(prediction, (img.shape[1], img.shape[0]))  # extrapolate predictions
-        prediction = np.uint8(255 * prediction)
-        # prediction = np.stack((prediction,)*3, axis=-1)  # broadcast to 3 channels
-        # prediction = cv.applyColorMap(prediction, cv.COLORMAP_VIRIDIS)  # needs to be reversed (not doing that)
+        pred = np.stack((predictions[:, :, i],) * 3, axis=-1)
+        pred = cv.applyColorMap(pred, cv.COLORMAP_HOT)  # COLORMAP_VIRIDIS
+        pred = cv.cvtColor(pred, cv.COLOR_BGR2RGB)
+        pred = cv.addWeighted(pred, heatmap_alpha, img, 1 - heatmap_alpha, gamma=0)
+        class_activations.append(pred)
 
-        """ignoring image overlaying for now"""
-        # prediction = np.uint8(prediction * 0.4 + img)
-        # prediction = np.uint64(img) * prediction
-        # prediction = np.clip(prediction, 0, 255)
-        # prediction = np.float64(superimposed_img / 255)
-
-        class_activations.append(prediction)
-
-    # class_activations.append(np.float64(img / 255))
     class_activations.append(img)
     class_names = np.append(class_names, 'full-image')
 
     fig, axes = plt.subplots(nrows=3, ncols=3, figsize=(10, 10), )
     fig.suptitle('Class Activations Map')
     fig.subplots_adjust(right=0.85, left=0.05)
-    cbar_ax = fig.add_axes([0.1, 0.03, 0.8, 0.02])
+    # cbar_ax = fig.add_axes([0.1, 0.03, 0.8, 0.02])
 
     for i in range(9):
-        ax = axes[i // 3, i % 3].imshow(class_activations[i], cmap=plt.get_cmap('viridis'), vmin=0, vmax=255)
+        ax = axes[i // 3, i % 3].imshow(class_activations[i])  # , cmap=plt.get_cmap('viridis'), vmin=0, vmax=255)
         axes[i // 3, i % 3].axis('off')
         axes[i // 3, i % 3].set_title(class_names[i])
-        if i == 0:
-            axes[i // 3, i % 3].figure.colorbar(mappable=ax,
-                                                cax=cbar_ax,
-                                                orientation='horizontal')
+        # if i == 0:
+        #     axes[i // 3, i % 3].figure.colorbar(mappable=ax,
+        #                                         cax=cbar_ax,
+        #                                         orientation='horizontal')
 
     fig.tight_layout()
     fig.show()
 
-    if save_outputs:
-        fig_cm.savefig(os.path.join('outputs', 'heatmap_{}.png'.format(model.name)),
-                       bbox_inches='tight')
+    if output_location:
+        fig_location = os.path.join(output_location, 'heatmap_{}.png'.format(model.name))
+        d = os.path.dirname(output_location)
+        if d and not os.path.isdir(d):
+            os.makedirs(d)
+        fig.savefig(fig_location, bbox_inches='tight')
 
 
 """

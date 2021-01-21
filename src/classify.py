@@ -38,7 +38,7 @@ if len(tf.config.list_physical_devices('GPU')) == 0:
 # data_dir = '/content/drive/My Drive/sirky/image_regions_64_050'
 
 # save model weights, plotted imgs/charts
-save_outputs = False
+output_location = None
 
 """ Load dataset """
 data_dir = 'image_regions_64_050'
@@ -71,6 +71,40 @@ scce_base = tf.losses.SparseCategoricalCrossentropy(from_logits=False)
 accu_base = tf.metrics.SparseCategoricalAccuracy()
 
 
+def sca(y_true, y_pred):
+    """Calculates how often predictions matches integer labels.
+
+    You can provide logits of classes as `y_pred`, since argmax of
+    logits and probabilities are same.
+
+    Args:
+      y_true: Integer ground truth values.
+      y_pred: The prediction values.
+
+    Returns:
+      Sparse categorical accuracy values.
+    """
+    y_pred_rank = ops.convert_to_tensor_v2(y_pred).shape.ndims
+    y_true_rank = ops.convert_to_tensor_v2(y_true).shape.ndims
+    # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
+    if (y_true_rank is not None) and (y_pred_rank is not None) and (len(
+            K.int_shape(y_true)) == len(K.int_shape(y_pred))):
+        y_true = array_ops.squeeze(y_true, [-1])
+    y_pred = math_ops.argmax(y_pred, axis=-1)
+
+    # If the predicted output and actual output types don't match, force cast them
+    # to match.
+    if K.dtype(y_pred) != K.dtype(y_true):
+        y_pred = math_ops.cast(y_pred, K.dtype(y_true))
+
+    return math_ops.cast(math_ops.equal(y_true, y_pred), K.floatx())
+
+
+y_true_sub = None
+# cnt = 0
+
+
+@tf.function
 def accu(y_true, y_pred):
     """
     SparseCategoricalAccuracy metric
@@ -87,6 +121,11 @@ def accu(y_true, y_pred):
     """
 
     y_pred_reshaped = tf.reshape(y_pred, [tf.shape(y_pred)[0], tf.shape(y_pred)[3]])
+
+    if tf.math.equal(tf.math.reduce_max(y_pred), 0.125) is not None:
+        tf.print(y_true)
+        y_true = tf.constant([7])
+
     return accu_base(y_true, y_pred_reshaped)
 
 
@@ -106,7 +145,7 @@ else:
         loss=scce_base,
         metrics=[accu, ])  # tf.keras.metrics.SparseCategoricalAccuracy(), 'sparse_categorical_crossentropy'
 
-    epochs = 40
+    epochs = 100
 
     history = model.fit(
         train_ds,
@@ -115,7 +154,7 @@ else:
         initial_epoch=epochs_trained,
         callbacks=[
             tensorboard_callback,
-            tf.keras.callbacks.EarlyStopping(monitor='val_loss',
+            tf.keras.callbacks.EarlyStopping(monitor='val_accu',
                                              patience=10,
                                              restore_best_weights=True)
                    ],
@@ -124,18 +163,18 @@ else:
     epochs_trained += epochs
 
     """Save model weights"""
-    if save_outputs:
+    if output_location:
         try:
             model.save(saved_model_path)
         except Exception as e:
             print(e)
 
     # false predictions + confusion map
-    visualize_results(val_ds, model, save_outputs, class_names, epochs_trained)
-    visualize_results(train_ds, model, save_outputs, class_names, epochs_trained)
+    visualize_results(val_ds, model, output_location, class_names, epochs_trained)
+    visualize_results(train_ds, model, output_location, class_names, epochs_trained)
 
     """Predict full image"""
-    predict_full_image(model, class_names, save_outputs)
+    predict_full_image(model, class_names, 'heatmaps')
 
 
 """
