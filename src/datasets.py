@@ -29,6 +29,7 @@ def get_dataset(data_dir):
         img = tf.image.decode_jpeg(img, channels=3)
         # resize the image to the desired size
         return tf.image.resize(img, [img_height, img_width])
+        # return img
 
     def process_path(file_path):
         label = get_label(file_path)
@@ -45,8 +46,7 @@ def get_dataset(data_dir):
         return ds
 
     batch_size = 32
-    img_height = 64
-    img_width = 64
+    img_height, img_width = 32, 32
 
     list_ds = tf.data.Dataset.list_files(os.path.join(data_dir, '*/*.jpg'), shuffle=False)
     image_count = len(list(list_ds))  # total (train + validation)

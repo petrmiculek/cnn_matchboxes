@@ -10,7 +10,7 @@ from math import sqrt
 
 # global parameters
 region_side = 32
-scale = 0.25
+scale = 0.50
 input_folder = 'sirky'
 output_folder = 'image_regions_{}_{:03d}'.format(region_side, int(scale * 100))
 labels_file = 'labels.csv'

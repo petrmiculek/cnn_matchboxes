@@ -7,7 +7,9 @@ def fully_conv(num_classes, weight_init_idx=0):
     """
     Currently used model
 
-    Accuracy does not seem to improve during training.
+    Solved problems with accuracy not improving.
+    Solved free points for uniform predictions.
+    (accu)
 
     """
     weight_init = [tf.keras.initializers.he_uniform(),
@@ -16,8 +18,8 @@ def fully_conv(num_classes, weight_init_idx=0):
     print('Weight init:[{}] = {}'.format(weight_init_idx, weight_init[weight_init_idx].distribution))
 
     channels_base = 64
-    width = np.array([1, 2, 2, 4, 4, 4])
-    layers = 6
+    width = np.array([1, 2, 2, 4, 4])
+    layers = len(width)
     name = 'FCN_layers{}_channels{}_init{}'.format(layers, width * channels_base, weight_init_idx)
     name = name.replace(' ', '_').replace('[', '_').replace(']', '_')  # list elements contain spaces
 

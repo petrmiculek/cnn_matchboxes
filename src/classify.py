@@ -21,7 +21,7 @@ import matplotlib as mpl
 
 from datasets import get_dataset
 from show_results import visualize_results, predict_full_image
-from class_activation_map import single_image
+from src_util.labels import load_labels
 import models
 
 from IPython.display import Image, display
@@ -41,7 +41,7 @@ if len(tf.config.list_physical_devices('GPU')) == 0:
 output_location = None
 
 """ Load dataset """
-data_dir = 'image_regions_64_050'
+data_dir = 'image_regions_32_050'
 
 class_names, train_ds, val_ds, val_ds_batch, class_weights = get_dataset(data_dir)
 num_classes = len(class_names)
@@ -63,7 +63,6 @@ model = models.fully_conv(num_classes, weight_init_idx=1)
 # learning_rate = CustomSchedule(d_model)
 # optimizer = tf.keras.optimizers.Adam(learning_rate)
 
-# print(model.summary())
 not_printed = True
 
 scce_base = tf.losses.SparseCategoricalCrossentropy(from_logits=False)
@@ -71,62 +70,26 @@ scce_base = tf.losses.SparseCategoricalCrossentropy(from_logits=False)
 accu_base = tf.metrics.SparseCategoricalAccuracy()
 
 
-def sca(y_true, y_pred):
-    """Calculates how often predictions matches integer labels.
-
-    You can provide logits of classes as `y_pred`, since argmax of
-    logits and probabilities are same.
-
-    Args:
-      y_true: Integer ground truth values.
-      y_pred: The prediction values.
-
-    Returns:
-      Sparse categorical accuracy values.
-    """
-    y_pred_rank = ops.convert_to_tensor_v2(y_pred).shape.ndims
-    y_true_rank = ops.convert_to_tensor_v2(y_true).shape.ndims
-    # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
-    if (y_true_rank is not None) and (y_pred_rank is not None) and (len(
-            K.int_shape(y_true)) == len(K.int_shape(y_pred))):
-        y_true = array_ops.squeeze(y_true, [-1])
-    y_pred = math_ops.argmax(y_pred, axis=-1)
-
-    # If the predicted output and actual output types don't match, force cast them
-    # to match.
-    if K.dtype(y_pred) != K.dtype(y_true):
-        y_pred = math_ops.cast(y_pred, K.dtype(y_true))
-
-    return math_ops.cast(math_ops.equal(y_true, y_pred), K.floatx())
-
-
-y_true_sub = None
-# cnt = 0
-
-
 @tf.function
 def accu(y_true, y_pred):
     """
-    SparseCategoricalAccuracy metric
+    SparseCategoricalAccuracy metric + tweaks
 
     input reshaped from (Batch, 1, 1, 8) to (Batch, 8)
+    prediction fails for equal probabilities
+    (Had I not done this explicitly,
+    argmax would output 0 and sometimes
+    match the 0=background class label)
     """
 
-    """
-    # unused
-    global not_printed
-    if not_printed:
-        print([tf.shape(y_pred)[k] for k in range(4)])
-        not_printed = False
-    """
-
+    # reshape prediction
     y_pred_reshaped = tf.reshape(y_pred, [tf.shape(y_pred)[0], tf.shape(y_pred)[3]])
 
-    if tf.math.equal(tf.math.reduce_max(y_pred), 0.125) is not None:
-        tf.print(y_true)
-        y_true = tf.constant([7])
+    # make prediction fail if it is undecided (all probabilities are 1/num_classes = 0.125)
+    cond = tf.expand_dims(tf.math.equal(tf.math.reduce_max(y_pred_reshaped, axis=1), 0.125), axis=1)
+    y_avoid_free = tf.where(cond, 7.0, y_true)
 
-    return accu_base(y_true, y_pred_reshaped)
+    return accu_base(y_avoid_free, y_pred_reshaped)
 
 
 saved_model_path = os.path.join('models_saved', model.name)
@@ -157,7 +120,7 @@ else:
             tf.keras.callbacks.EarlyStopping(monitor='val_accu',
                                              patience=10,
                                              restore_best_weights=True)
-                   ],
+        ],
         class_weight=class_weights
     )
     epochs_trained += epochs
@@ -174,8 +137,11 @@ else:
     visualize_results(train_ds, model, output_location, class_names, epochs_trained)
 
     """Predict full image"""
-    predict_full_image(model, class_names, 'heatmaps')
+    labels = list(load_labels('sirky/labels.csv', use_full_path=False))
 
+    for file in labels[-2:-1]:
+        predict_full_image(model, class_names, img_path='sirky' + os.sep + file, output_location='new_heatmaps',
+                           show_figure=False)
 
 """
 class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):

@@ -97,31 +97,29 @@ def visualize_results(val_ds, model, save_outputs, class_names, epochs_trained):
     """
 
 
-def predict_full_image(model, class_names, output_location):
-    """get prediction for full image (class activations map)"""
-    img_path = '20201020_121210.jpg'
-    full_path = 'sirky/' + img_path
+def predict_full_image(model, class_names, img_path, output_location, show_figure=True):
+    """Show predicted heatmaps for full image"""
     scale = 0.5
 
-    # open/process image
-    img = cv.imread(full_path)
+    # Open and Process image
+    img = cv.imread(img_path)
     img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
     img = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))  # reversed indices, OK
     img_batch = np.expand_dims(img, 0)
 
-    # predict
+    # Make prediction
     predictions_raw = model.predict(tf.convert_to_tensor(img_batch, dtype=tf.uint8))
     predictions = tf.squeeze(predictions_raw).numpy()
     # predictions_maxes = np.argmax(predictions_raw, axis=-1)
 
+    class_activations = []
+    heatmap_alpha = 0.5  # opacity
+
+    # Turn predictions into heatmaps superimposed on input image
     predictions = np.uint8(255 * predictions)
     predictions = cv.resize(predictions, (img.shape[1], img.shape[0]))  # extrapolate predictions
 
-    class_activations = []
-    num_classes = len(class_names)
-    heatmap_alpha = 0.5
-
-    for i in range(0, num_classes):
+    for i in range(0, len(class_names)):
         pred = np.stack((predictions[:, :, i],) * 3, axis=-1)
         pred = cv.applyColorMap(pred, cv.COLORMAP_HOT)  # COLORMAP_VIRIDIS
         pred = cv.cvtColor(pred, cv.COLOR_BGR2RGB)
@@ -129,56 +127,28 @@ def predict_full_image(model, class_names, output_location):
         class_activations.append(pred)
 
     class_activations.append(img)
-    class_names = np.append(class_names, 'full-image')
+    subplot_titles = np.append(class_names, 'full-image')
 
+    # Plot heatmaps
     fig, axes = plt.subplots(nrows=3, ncols=3, figsize=(10, 10), )
     fig.suptitle('Class Activations Map')
     fig.subplots_adjust(right=0.85, left=0.05)
-    # cbar_ax = fig.add_axes([0.1, 0.03, 0.8, 0.02])
 
     for i in range(9):
-        ax = axes[i // 3, i % 3].imshow(class_activations[i])  # , cmap=plt.get_cmap('viridis'), vmin=0, vmax=255)
+        ax = axes[i // 3, i % 3].imshow(class_activations[i])
         axes[i // 3, i % 3].axis('off')
-        axes[i // 3, i % 3].set_title(class_names[i])
-        # if i == 0:
-        #     axes[i // 3, i % 3].figure.colorbar(mappable=ax,
-        #                                         cax=cbar_ax,
-        #                                         orientation='horizontal')
+        axes[i // 3, i % 3].set_title(subplot_titles[i])
 
     fig.tight_layout()
-    fig.show()
+
+    if show_figure:
+        fig.show()
 
     if output_location:
-        fig_location = os.path.join(output_location, 'heatmap_{}.png'.format(model.name))
-        d = os.path.dirname(output_location)
+        img_path_no_suffix = img_path[0:img_path.rfind('.')].replace('/', '_')
+
+        fig_location = os.path.join(output_location, 'heatmap_{}_{}.png'.format(img_path_no_suffix, model.name))
+        d = os.path.dirname(fig_location)
         if d and not os.path.isdir(d):
-            os.makedirs(d)
+            os.makedirs(d, exist_ok=True)
         fig.savefig(fig_location, bbox_inches='tight')
-
-
-"""
-Unused, dump:
-
-# https://keras.io/guides/transfer_learning/
-resnet = tf.keras.applications.ResNet50(
-    include_top=False,
-    weights="imagenet",
-    # weights=None,
-    input_shape=(64, 64, 3),
-    pooling='avg',  # average pooling into single prediction
-    classes=2)  # does not seem to have any meaning
-resnet.trainable = False
-
-inputs = tf.keras.Input(shape=(64, 64, 3))
-# We make sure that the base_model is running in inference mode here,
-# by passing `training=False`. This is important for fine-tuning, as you will
-# learn in a few paragraphs.
-x = resnet(inputs, training=False)
-# Convert features of shape `base_model.output_shape[1:]` to vectors
-# x = tf.keras.layers.GlobalAveragePooling2D()(x)
-# A Dense classifier with a single unit (binary classification)
-# x = tf.keras.layers.Flatten()(x)
-# outputs = tf.keras.layers.Dense(num_classes, activation='softmax')(x)
-# outputs = tf.keras.layers.Softmax()(x)
-model = tf.keras.Model(inputs, x)
-"""

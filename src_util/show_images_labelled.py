@@ -24,6 +24,7 @@ Dead development branch - if you want to copy code, look into 'image_regions.py'
 """
 window_name = 'Q=Quit, A=Prev, D=Next'
 
+
 def random_color():
     return randint(0, 255), randint(0, 255), randint(0, 255)
 
@@ -91,7 +92,8 @@ if __name__ == '__main__':
                 print(path)
 
         if show_images:
-            cv.putText(img, '{} {}/{}'.format(file, i + 1, images_total), (img.shape[1] * 3 // 4, img.shape[0] * 11 // 12),
+            cv.putText(img, '{} {}/{}'.format(file, i + 1, images_total),
+                       (img.shape[1] * 3 // 4, img.shape[0] * 11 // 12),
                        cv.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255),
                        5, cv.LINE_AA)
             cv.imshow(window_name, img)
