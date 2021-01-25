@@ -1,6 +1,35 @@
 import tensorflow as tf
 import numpy as np
-from math import log2
+from math import log2, ceil
+
+
+def fully_fully_conv(num_classes, weight_init_idx=0):
+    model = tf.keras.Sequential(name="conv_bnorm_only")
+
+    model.add(tf.keras.Input(shape=(None, None, 3)))
+    model.add(tf.keras.layers.experimental.preprocessing.Rescaling(1. / 255))
+
+    for i in range(1, 16):
+        width = 1 << (ceil(log2(i)) + 3)
+        model.add(tf.keras.layers.BatchNormalization())
+        model.add(tf.keras.layers.Conv2D(width,
+                                         3,
+                                         activation='relu',
+                                         padding='valid',
+                                         kernel_initializer=tf.keras.initializers.he_normal(),
+                                         ))
+
+    model.add(tf.keras.layers.BatchNormalization())
+    model.add(tf.keras.layers.Conv2D(128, 2, activation='relu'))  # fit-once
+
+    model.add(tf.keras.layers.BatchNormalization())
+    model.add(tf.keras.layers.Conv2D(256, 1, activation='relu'))
+
+    model.add(tf.keras.layers.BatchNormalization())
+    model.add(tf.keras.layers.Conv2D(num_classes, 1, activation='relu'))
+
+    model.add(tf.keras.layers.Softmax())
+    return model
 
 
 def fully_conv(num_classes, weight_init_idx=0):

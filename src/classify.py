@@ -57,7 +57,7 @@ file_writer.set_as_default()
 tensorboard_callback = tf.keras.callbacks.TensorBoard(logdir, histogram_freq=1, profile_batch='300,400')
 
 """ Create/Load a model """
-model = models.fully_conv(num_classes, weight_init_idx=1)
+model = models.fully_fully_conv(num_classes, weight_init_idx=1)
 
 # unused
 # learning_rate = CustomSchedule(d_model)
@@ -133,14 +133,16 @@ else:
             print(e)
 
     # false predictions + confusion map
-    visualize_results(val_ds, model, output_location, class_names, epochs_trained)
-    visualize_results(train_ds, model, output_location, class_names, epochs_trained)
+    visualize_results(model, val_ds, class_names, epochs_trained, output_location)
+    visualize_results(model, train_ds, class_names, epochs_trained, output_location)
 
     """Predict full image"""
     labels = list(load_labels('sirky/labels.csv', use_full_path=False))
 
-    for file in labels[-2:-1]:
-        predict_full_image(model, class_names, img_path='sirky' + os.sep + file, output_location='new_heatmaps',
+    for file in labels:  # [-2:-1]
+        predict_full_image(model, class_names,
+                           img_path='sirky' + os.sep + file,
+                           output_location='full_res_heatmaps',
                            show_figure=False)
 
 """
