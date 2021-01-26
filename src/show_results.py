@@ -31,8 +31,8 @@ def confusion_matrix(model, class_names, epochs_trained, labels,
     plt.close(fig_cm.figure)
 
 
-def misclassified_regions(imgs, labels, class_names, predictions, false_pred, misclassified_folder,
-                          show_misclassified_regions):
+def misclassified_regions(imgs, labels, class_names, predictions,
+                          false_pred, misclassified_folder, show_misclassified):
     """Show misclassified regions"""
     for i, idx in enumerate(false_pred):
         label_true = class_names[labels[idx]]
@@ -53,13 +53,14 @@ def misclassified_regions(imgs, labels, class_names, predictions, false_pred, mi
                 os.makedirs(d)
             fig.axes.figure.savefig(fig_location, bbox_inches='tight')
 
-        if show_misclassified_regions:
+        if show_misclassified:
             fig.axes.figure.show()
 
         plt.close(fig.axes.figure)
 
 
-def visualize_results(model, dataset, class_names, epochs_trained, output_location=None, show_figure=False):
+def visualize_results(model, dataset, class_names, epochs_trained, 
+                      output_location=None, show_figure=False, show_misclassified=False):
     """Show misclassified regions and confusion matrix
 
     :param model:
@@ -68,9 +69,8 @@ def visualize_results(model, dataset, class_names, epochs_trained, output_locati
     :param epochs_trained:
     :param output_location:
     :param show_figure:
+    :param show_misclassified:
     """
-
-    show_misclassified_regions = False
 
     """Dataset processing"""
     imgs = []
@@ -98,7 +98,7 @@ def visualize_results(model, dataset, class_names, epochs_trained, output_locati
         misclassified_folder = None
 
     misclassified_regions(imgs, labels, class_names, predictions,
-                          false_predictions, misclassified_folder, show_misclassified_regions)
+                          false_predictions, misclassified_folder, show_misclassified)
 
     """Confusion matrix"""
     confusion_matrix(model, class_names, epochs_trained, labels,
@@ -145,8 +145,8 @@ def predict_full_image(model, class_names, img_path, output_location, show_figur
     # Open and Process image
     img = cv.imread(img_path)
     h, w, _ = img.shape  # don't use after resizing
-    # img = img[h // 4: 3*h//4, w // 4: 3*w // 4, :]  # cut out half-sized from center
-    img = img[h // 3: 2 * h // 3, w // 3: 2 * w // 3, :]  # cut out third-sized from center
+    img = img[h // 4: 3*h//4, w // 4: 3*w // 4, :]  # cut out half-sized from center
+    # img = img[h // 3: 2 * h // 3, w // 3: 2 * w // 3, :]  # cut out third-sized from center
     img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
     img = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))  # reversed indices, OK
     img_batch = np.expand_dims(img, 0)

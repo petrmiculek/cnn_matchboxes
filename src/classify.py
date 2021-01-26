@@ -23,6 +23,7 @@ from datasets import get_dataset
 from show_results import visualize_results, predict_full_image
 from src_util.labels import load_labels
 import models
+import util
 
 from IPython.display import Image, display
 import matplotlib.cm as cm
@@ -32,6 +33,13 @@ print(f'{tf.__version__=}')
 if len(tf.config.list_physical_devices('GPU')) == 0:
     print('no available GPUs')
     sys.exit(0)
+
+# plt.figure(figsize=(10, 10))
+# for i in range(9):
+#     augmented_image = util.Augmentation()(image)
+#     ax = plt.subplot(3, 3, i + 1)
+#     plt.imshow(augmented_image[0])
+#     plt.axis("off")
 
 # from google.colab import drive
 # drive.mount('/content/drive')
@@ -43,7 +51,7 @@ output_location = None
 """ Load dataset """
 data_dir = 'image_regions_32_050'
 
-class_names, train_ds, val_ds, val_ds_batch, class_weights = get_dataset(data_dir)
+class_names, train_ds, val_ds, val_ds_batch, class_weights = get_dataset(data_dir, augmentation=True)
 num_classes = len(class_names)
 
 """ Logging """
@@ -57,7 +65,14 @@ file_writer.set_as_default()
 tensorboard_callback = tf.keras.callbacks.TensorBoard(logdir, histogram_freq=1, profile_batch='300,400')
 
 """ Create/Load a model """
-model = models.fully_fully_conv(num_classes, weight_init_idx=1)
+data_augmentation = tf.keras.Sequential([
+    tf.keras.layers.experimental.preprocessing.RandomFlip("horizontal_and_vertical"),
+    tf.keras.layers.experimental.preprocessing.RandomRotation(0.2),
+])
+
+model = tf.keras.Sequential([data_augmentation,
+                             models.fully_fully_conv(num_classes, weight_init_idx=1),
+                             ])
 
 # unused
 # learning_rate = CustomSchedule(d_model)
@@ -65,32 +80,8 @@ model = models.fully_fully_conv(num_classes, weight_init_idx=1)
 
 not_printed = True
 
-scce_base = tf.losses.SparseCategoricalCrossentropy(from_logits=False)
-
-accu_base = tf.metrics.SparseCategoricalAccuracy()
-
-
-@tf.function
-def accu(y_true, y_pred):
-    """
-    SparseCategoricalAccuracy metric + tweaks
-
-    input reshaped from (Batch, 1, 1, 8) to (Batch, 8)
-    prediction fails for equal probabilities
-    (Had I not done this explicitly,
-    argmax would output 0 and sometimes
-    match the 0=background class label)
-    """
-
-    # reshape prediction
-    y_pred_reshaped = tf.reshape(y_pred, [tf.shape(y_pred)[0], tf.shape(y_pred)[3]])
-
-    # make prediction fail if it is undecided (all probabilities are 1/num_classes = 0.125)
-    cond = tf.expand_dims(tf.math.equal(tf.math.reduce_max(y_pred_reshaped, axis=1), 0.125), axis=1)
-    y_avoid_free = tf.where(cond, 7.0, y_true)
-
-    return accu_base(y_avoid_free, y_pred_reshaped)
-
+scce_loss = tf.losses.SparseCategoricalCrossentropy(from_logits=False)
+accu = util.Accu()
 
 saved_model_path = os.path.join('models_saved', model.name)
 
@@ -105,10 +96,10 @@ else:
     """ Train the model"""
     model.compile(
         optimizer='adam',
-        loss=scce_base,
+        loss=scce_loss,
         metrics=[accu, ])  # tf.keras.metrics.SparseCategoricalAccuracy(), 'sparse_categorical_crossentropy'
 
-    epochs = 100
+    epochs = 1
 
     history = model.fit(
         train_ds,
@@ -133,13 +124,14 @@ else:
             print(e)
 
     # false predictions + confusion map
-    visualize_results(model, val_ds, class_names, epochs_trained, output_location)
-    visualize_results(model, train_ds, class_names, epochs_trained, output_location)
+    output_location = None
+    visualize_results(model, val_ds, class_names, epochs_trained, output_location, show_figure=True)
+    visualize_results(model, train_ds, class_names, epochs_trained, output_location, show_figure=True)
 
     """Predict full image"""
     labels = list(load_labels('sirky/labels.csv', use_full_path=False))
 
-    for file in labels:  # [-2:-1]
+    for file in labels[-2:-1]:
         predict_full_image(model, class_names,
                            img_path='sirky' + os.sep + file,
                            output_location='full_res_heatmaps',
