@@ -57,8 +57,8 @@ Fully Convolutional Network
 
 Further plans:
 
-Instance "segmentation"
+- Instance "segmentation"
 
-Counting of boxes
+- Counting of boxes
 
-Multi-view prediction fusion
+- Multi-view prediction fusion
