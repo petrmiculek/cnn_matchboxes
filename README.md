@@ -46,7 +46,9 @@ Fully Convolutional Network
 ( still training on classification )
 
 - (Convolution(3x3), ReLU, BatchNorm) * N
-  Only resolution change is the convolution crop
+  
+  The only resolution change is the convolution crop
+ 
   => output dimensions are K pixels smaller than input (K = 31, currently)
   
 - Inference outputs high resolution heatmap of class activations.
