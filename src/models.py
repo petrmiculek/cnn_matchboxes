@@ -1,10 +1,12 @@
 import tensorflow as tf
 import numpy as np
 from math import log2, ceil
+import util
 
 
-def fully_fully_conv(num_classes, weight_init_idx=0):
-    model = tf.keras.Sequential(name="conv_bnorm_only")
+def fully_fully_conv(num_classes, name_suffix='', weight_init_idx=0):
+    init = tf.keras.initializers.he_normal()
+    model = tf.keras.Sequential(name="fcn_16layers_" + name_suffix)
 
     model.add(tf.keras.Input(shape=(None, None, 3)))
     model.add(tf.keras.layers.experimental.preprocessing.Rescaling(1. / 255))
@@ -16,17 +18,17 @@ def fully_fully_conv(num_classes, weight_init_idx=0):
                                          3,
                                          activation='relu',
                                          padding='valid',
-                                         kernel_initializer=tf.keras.initializers.he_normal(),
+                                         kernel_initializer=init,
                                          ))
 
     model.add(tf.keras.layers.BatchNormalization())
-    model.add(tf.keras.layers.Conv2D(128, 2, activation='relu'))  # fit-once
+    model.add(tf.keras.layers.Conv2D(128, 2, activation='relu', padding='valid', kernel_initializer=init))  # fit-once
 
     model.add(tf.keras.layers.BatchNormalization())
-    model.add(tf.keras.layers.Conv2D(256, 1, activation='relu'))
+    model.add(tf.keras.layers.Conv2D(256, 1, activation='relu', padding='valid', kernel_initializer=init))
 
     model.add(tf.keras.layers.BatchNormalization())
-    model.add(tf.keras.layers.Conv2D(num_classes, 1, activation='relu'))
+    model.add(tf.keras.layers.Conv2D(num_classes, 1, activation='relu', padding='valid', kernel_initializer=init))
 
     model.add(tf.keras.layers.Softmax())
     return model
@@ -50,9 +52,8 @@ def fully_conv(num_classes, weight_init_idx=0):
     width = np.array([1, 2, 2, 4, 4])
     layers = len(width)
     name = 'FCN_layers{}_channels{}_init{}'.format(layers, width * channels_base, weight_init_idx)
-    name = name.replace(' ', '_').replace('[', '_').replace(']', '_')  # list elements contain spaces
 
-    model = tf.keras.Sequential(name=name)
+    model = tf.keras.Sequential(name=util.safestr(name))
     model.add(tf.keras.Input(shape=(None, None, 3)))
     model.add(tf.keras.layers.experimental.preprocessing.Rescaling(1. / 255))
 

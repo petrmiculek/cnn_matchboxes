@@ -38,3 +38,14 @@ class Accu:
 #
 #     def __call__(self, *args, **kwargs):
 #         return self.model(*args, **kwargs)
+
+
+def safestr(*args):
+    """Turn string into a filename
+    https://stackoverflow.com/questions/7406102/create-sane-safe-filename-from-any-unsafe-string
+    :param string:
+    :return:
+    """
+    string = str(args)
+    keepcharacters = (' ', '.', '_')
+    return "".join(c for c in string if c.isalnum() or c in keepcharacters).rstrip().replace(' ', '_')

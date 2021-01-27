@@ -10,12 +10,15 @@ import cv2 as cv
 def confusion_matrix(model, class_names, epochs_trained, labels,
                      predictions, output_location, show_figure):
     """Create and show/save confusion matrix"""
+    cm = conf_mat(list(labels), list(predictions), normalize='true')
+
     fig_cm = sns.heatmap(
-        conf_mat(list(labels), list(predictions)),
+        cm,
         annot=True,
         xticklabels=class_names,
         yticklabels=class_names,
-        fmt='d')
+        fmt='0.2f'  # '0:0.2g'
+    )
     fig_cm.set_title('Confusion Matrix\n{}[e{}]'.format(model.name, epochs_trained))
     fig_cm.set_xlabel("Predicted")
     fig_cm.set_ylabel("True")
@@ -97,8 +100,8 @@ def visualize_results(model, dataset, class_names, epochs_trained,
     else:
         misclassified_folder = None
 
-    misclassified_regions(imgs, labels, class_names, predictions,
-                          false_predictions, misclassified_folder, show_misclassified)
+    # misclassified_regions(imgs, labels, class_names, predictions,
+    #                       false_predictions, misclassified_folder, show_misclassified)
 
     """Confusion matrix"""
     confusion_matrix(model, class_names, epochs_trained, labels,
@@ -111,10 +114,11 @@ def visualize_results(model, dataset, class_names, epochs_trained,
     # undecided_idx = np.argwhere(maxes <= 0.125)
 
     # print(labels.shape, predictions.shape)  # debug
-    print('Accuracy:', 100.0 * (1 - len(false_predictions) / len(predictions)), '%')
-    print('Prediction types:\n',
-          '\tConfident: {}\n'.format(confident),
-          '\tUndecided: {}'.format(undecided))
+
+    # print('Accuracy:', 100.0 * (1 - len(false_predictions) / len(predictions)), '%')
+    # print('Prediction types:\n',
+    #       '\tConfident: {0:0.2f}\n'.format(confident),
+    #       '\tUndecided: {0:0.2f}'.format(undecided))
 
     """
     for i in undecided_idx:
@@ -129,7 +133,8 @@ def visualize_results(model, dataset, class_names, epochs_trained,
     """
 
 
-def predict_full_image(model, class_names, img_path, output_location, show_figure=True, maxes_only=False):
+def predict_full_image(model, class_names, img_path, output_location, 
+                       heatmap_alpha=0.7, show_figure=True, maxes_only=False):
     """Show predicted heatmaps for full image
 
     :param model:
@@ -155,6 +160,9 @@ def predict_full_image(model, class_names, img_path, output_location, show_figur
     predictions_raw = model.predict(tf.convert_to_tensor(img_batch, dtype=tf.uint8))
     predictions = tf.squeeze(predictions_raw).numpy()
 
+    # Model crops the image, accounting for it
+    img = img[15:-16, 15:-16]
+
     if maxes_only:
         maxes = np.zeros(predictions.shape)
         max_indexes = np.argmax(predictions, axis=-1)
@@ -162,7 +170,6 @@ def predict_full_image(model, class_names, img_path, output_location, show_figur
         predictions = maxes
 
     class_activations = []
-    heatmap_alpha = 0.5  # opacity
 
     # Turn predictions into heatmaps superimposed on input image
     predictions = np.uint8(255 * predictions)
@@ -170,7 +177,7 @@ def predict_full_image(model, class_names, img_path, output_location, show_figur
 
     for i in range(0, len(class_names)):
         pred = np.stack((predictions[:, :, i],) * 3, axis=-1)
-        pred = cv.applyColorMap(pred, cv.COLORMAP_HOT)  # COLORMAP_VIRIDIS
+        pred = cv.applyColorMap(pred, cv.COLORMAP_JET)  # COLORMAP_VIRIDIS
         pred = cv.cvtColor(pred, cv.COLOR_BGR2RGB)
         pred = cv.addWeighted(pred, heatmap_alpha, img, 1 - heatmap_alpha, gamma=0)
         class_activations.append(pred)

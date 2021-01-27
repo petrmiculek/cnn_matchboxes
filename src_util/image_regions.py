@@ -66,7 +66,7 @@ def get_boundaries(img, center_pos):
     return x - radius, y - radius, x + radius, y + radius
 
 
-def crop_out_from_center(img, center_pos):
+def cut_out_around_point(img, center_pos):
     x1, x2, y1, y2 = get_boundaries(img, center_pos)
     return crop_out(img, x1, x2, y1, y2)
 
@@ -86,13 +86,15 @@ if __name__ == '__main__':
         os.makedirs(output_folder, exist_ok=True)
 
     labels = load_labels(input_folder + os.sep + labels_file, use_full_path=False)
+    # mean_label_per_category_count = np.mean([len(labels[file]) for file in labels])
+    # there are 1700 annotations in ~50 images => 35 keypoints per image
+    # can do 100 background points per image
+
     for file in labels:  # dict of labelled_files
 
         img = cv.imread(input_folder + os.sep + file)
         img = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))  # reversed indices, OK
         file_labels = []
-
-        mean_label_per_category_count = np.mean([len([labels[file][category] for category in labels[file]])])
 
         # generating regions from labels = keypoints
         for category in labels[file]:  # dict of categories
@@ -105,7 +107,7 @@ if __name__ == '__main__':
 
                 file_labels.append(label_pos_scaled)
 
-                region = crop_out_from_center(img, label_pos_scaled)
+                region = cut_out_around_point(img, label_pos_scaled)
 
                 # save image
                 region_path = output_folder + os.sep + category + os.sep  # per category folder
@@ -119,7 +121,7 @@ if __name__ == '__main__':
             os.makedirs(output_folder + os.sep + category, exist_ok=True)
 
         repeated = 0
-        for i in np.arange(np.ceil(mean_label_per_category_count)):
+        for i in range(50):
             pos = (0, 0)
             repeat = True
             while repeat:
@@ -136,7 +138,7 @@ if __name__ == '__main__':
                         repeated += 1
                         repeat = True
 
-            region_background = crop_out_from_center(img, pos)
+            region_background = cut_out_around_point(img, pos)
             region_path = output_folder + os.sep + category + os.sep  # per category folder
             region_filename = file.split('.')[0] + '_(' + str(pos[0]) + ',' + str(pos[1]) + ').jpg'
 
