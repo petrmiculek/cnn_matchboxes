@@ -32,14 +32,25 @@ import matplotlib.cm as cm
 
 # extracted for timing purposes
 def heatmaps_all(model, class_names, name):
-    labels = list(load_labels('sirky/labels.csv', use_full_path=False))
-    for file in labels[-2:-1]:
+    folder = 'sirky_validation'
+    labels = list(load_labels(folder + os.sep + 'labels_validation.csv', use_full_path=False))
+    for file in labels:
         predict_full_image(model, class_names,
-                           img_path='sirky' + os.sep + file,
+                           img_path=folder + os.sep + file,
+                           heatmap_alpha=0.6,
                            # output_location='heatmaps_fixed' + name,
-                           heatmap_alpha=0.4,
                            output_location=None,
                            show_figure=True)
+
+
+accu_sca = tf.metrics.SparseCategoricalAccuracy()
+
+
+def accu_free_lunch(y_true, y_pred):
+    """Fix shape, keep accidental uniform prediction hits"""
+    y_pred_reshaped = tf.reshape(y_pred, [tf.shape(y_pred)[0], tf.shape(y_pred)[3]])
+
+    return accu_sca(y_true, y_pred_reshaped)
 
 
 if __name__ == '__main__':
@@ -59,7 +70,8 @@ if __name__ == '__main__':
     """ Load dataset """
     data_dir = 'image_regions_32_050'
 
-    class_names, train_ds, val_ds, val_ds_batch, class_weights = get_dataset(data_dir)
+    train_ds, class_names, class_weights = get_dataset(data_dir)
+    val_ds, _, _ = get_dataset(data_dir + '_val')
     num_classes = len(class_names)
 
     """ Logging """
@@ -75,17 +87,18 @@ if __name__ == '__main__':
     # for i, (logits, augment) in enumerate(list(product([True, False], [True, False]))):
 
     """ Create/Load a model """
-    augment = True
+    augment = False
 
     name = util.safestr(f'{augment=}')
     model = models.fully_fully_conv(num_classes, name_suffix=name, weight_init_idx=1)
 
     if augment:
         data_augmentation = tf.keras.Sequential([
-            tf.keras.layers.experimental.preprocessing.RandomFlip("horizontal_and_vertical"),
-            tf.keras.layers.experimental.preprocessing.RandomRotation(0.2), ])
+            tf.keras.layers.experimental.preprocessing.RandomFlip("horizontal"),
+            # tf.keras.layers.experimental.preprocessing.RandomRotation(0.2),
+        ])
 
-        model = tf.keras.Sequential([data_augmentation, model, ])
+        model = tf.keras.Sequential([data_augmentation, model, ], name=model.name)
 
     # unused
     # learning_rate = CustomSchedule(d_model)
@@ -95,6 +108,7 @@ if __name__ == '__main__':
 
     scce_loss = tf.losses.SparseCategoricalCrossentropy(from_logits=False)
     accu = util.Accu()
+    lr_sched = tf.keras.callbacks.LearningRateScheduler(util.lr_scheduler)
 
     epochs_trained = 0
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
@@ -103,7 +117,10 @@ if __name__ == '__main__':
     model.compile(
         optimizer='adam',
         loss=scce_loss,
-        metrics=[accu, ])  # tf.keras.metrics.SparseCategoricalAccuracy(), 'sparse_categorical_crossentropy'
+        metrics=['sparse_categorical_crossentropy',
+                 accu,
+                 tf.keras.metrics.SparseCategoricalAccuracy(),
+                 accu_free_lunch])
 
     epochs = 100
 
@@ -114,9 +131,10 @@ if __name__ == '__main__':
         initial_epoch=epochs_trained,
         callbacks=[
             tensorboard_callback,
-            tf.keras.callbacks.EarlyStopping(monitor='val_accu',
+            tf.keras.callbacks.EarlyStopping(monitor='val_accu_free_lunch',
                                              patience=10,
-                                             restore_best_weights=True)
+                                             restore_best_weights=True),
+            lr_sched
         ],
         class_weight=class_weights
     )
@@ -151,14 +169,4 @@ class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
 
     return tf.math.rsqrt(self.d_model) * tf.math.minimum(arg1, arg2)
 
-
-# unused
-def scheduler(epoch, lr, start=10, decay=-0.1):
-    if epoch < start:
-        return lr
-    else:
-        return lr * tf.math.exp(decay)
-
-
-lr_sched = tf.keras.callbacks.LearningRateScheduler(scheduler)
 """

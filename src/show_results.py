@@ -17,7 +17,9 @@ def confusion_matrix(model, class_names, epochs_trained, labels,
         annot=True,
         xticklabels=class_names,
         yticklabels=class_names,
-        fmt='0.2f'  # '0:0.2g'
+        fmt='0.2f',  # '0:0.2g'
+        vmin=0.0,
+        vmax=1.0
     )
     fig_cm.set_title('Confusion Matrix\n{}[e{}]'.format(model.name, epochs_trained))
     fig_cm.set_xlabel("Predicted")
@@ -177,7 +179,7 @@ def predict_full_image(model, class_names, img_path, output_location,
 
     for i in range(0, len(class_names)):
         pred = np.stack((predictions[:, :, i],) * 3, axis=-1)
-        pred = cv.applyColorMap(pred, cv.COLORMAP_JET)  # COLORMAP_VIRIDIS
+        pred = cv.applyColorMap(pred, cv.COLORMAP_VIRIDIS)  # COLORMAP_VIRIDIS
         pred = cv.cvtColor(pred, cv.COLOR_BGR2RGB)
         pred = cv.addWeighted(pred, heatmap_alpha, img, 1 - heatmap_alpha, gamma=0)
         class_activations.append(pred)

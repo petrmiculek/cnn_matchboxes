@@ -48,10 +48,10 @@ def get_dataset(data_dir):
     batch_size = 32
     img_height, img_width = 32, 32
 
-    list_ds = tf.data.Dataset.list_files(os.path.join(data_dir, '*/*.jpg'), shuffle=False)
-    image_count = len(list(list_ds))  # total (train + validation)
+    dataset = tf.data.Dataset.list_files(os.path.join(data_dir, '*/*.jpg'), shuffle=False)
+    image_count = len(list(dataset))  # total (train + validation)
 
-    list_ds = list_ds.shuffle(image_count, reshuffle_each_iteration=False, seed=const_seed)
+    dataset = dataset.shuffle(image_count, reshuffle_each_iteration=False, seed=const_seed)
 
     """Compile a `class_names` list from the tree structure of the files."""
     data_dir_path = pathlib.Path(data_dir)
@@ -59,22 +59,18 @@ def get_dataset(data_dir):
     num_classes = len(class_names)  # total (train + validation)
 
     """Split train and validation:"""
-    val_size = int(image_count * 0.2)
-    train_ds = list_ds.skip(val_size)
-    val_ds = list_ds.take(val_size)
+    # val_size = int(image_count * 0.2)
+    # train_ds = dataset.skip(val_size)
+    # val_ds = dataset.take(val_size)
 
     autotune = tf.data.experimental.AUTOTUNE
 
-    val_as_batch_dataset = val_ds
-
     # map to labels, etc
-    train_ds = train_ds.map(process_path, num_parallel_calls=autotune)
-    val_ds = val_ds.map(process_path, num_parallel_calls=autotune)
+    dataset = dataset.map(process_path, num_parallel_calls=autotune)
 
-    _, class_counts = np.unique(np.array(list(train_ds), dtype='object')[:, 1], return_counts=True)
+    _, class_counts = np.unique(np.array(list(dataset), dtype='object')[:, 1], return_counts=True)
     class_weights = get_class_weights(class_counts)  # training set only
 
-    train_ds = configure_for_performance(train_ds)
-    val_ds = configure_for_performance(val_ds)
+    dataset = configure_for_performance(dataset)
 
-    return class_names, train_ds, val_ds, val_as_batch_dataset, class_weights
+    return dataset, class_names, class_weights

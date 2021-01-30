@@ -12,8 +12,12 @@ from math import sqrt
 region_side = 32
 scale = 0.50
 input_folder = 'sirky'
-output_folder = 'image_regions_{}_{:03d}'.format(region_side, int(scale * 100))
 labels_file = 'labels.csv'
+output_folder = 'image_regions_{}_{:03d}'.format(region_side, int(scale * 100))
+
+# input_folder = 'sirky_validation'
+# labels_file = 'labels_validation.csv'
+# output_folder = 'image_regions_val_{}_{:03d}'.format(region_side, int(scale * 100))
 
 radius = region_side // 2
 random.seed(1234)

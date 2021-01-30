@@ -40,6 +40,23 @@ class Accu:
 #         return self.model(*args, **kwargs)
 
 
+def lr_scheduler(epoch, lr, start=10, decay=-0.1):
+    """
+
+    https://keras.io/api/callbacks/learning_rate_scheduler/
+
+    :param epoch:
+    :param lr:
+    :param start:
+    :param decay:
+    :return:
+    """
+    if epoch < start:
+        return lr
+    else:
+        return lr * tf.math.exp(decay)
+
+
 def safestr(*args):
     """Turn string into a filename
     https://stackoverflow.com/questions/7406102/create-sane-safe-filename-from-any-unsafe-string
