@@ -33,13 +33,13 @@ import matplotlib.cm as cm
 # extracted for timing purposes
 def heatmaps_all(model, class_names, name):
     folder = 'sirky_validation'
-    labels = list(load_labels(folder + os.sep + 'labels_validation.csv', use_full_path=False))
+    labels = list(load_labels(folder + os.sep + 'labels.csv', use_full_path=False))
     for file in labels:
         predict_full_image(model, class_names,
                            img_path=folder + os.sep + file,
                            heatmap_alpha=0.6,
-                           # output_location='heatmaps_fixed' + name,
-                           output_location=None,
+                           output_location='heatmaps_fixed' + name,
+                           # output_location=None,
                            show_figure=True)
 
 
@@ -117,21 +117,24 @@ if __name__ == '__main__':
     model.compile(
         optimizer='adam',
         loss=scce_loss,
-        metrics=['sparse_categorical_crossentropy',
+        metrics=[
+                 # 'sparse_categorical_crossentropy',
                  accu,
-                 tf.keras.metrics.SparseCategoricalAccuracy(),
-                 accu_free_lunch])
+                 # tf.keras.metrics.SparseCategoricalAccuracy(),
+                 # accu_free_lunch
+                 ])
 
     epochs = 100
 
     history = model.fit(
         train_ds,
         validation_data=val_ds,
+        validation_freq=5,
         epochs=(epochs + epochs_trained),
         initial_epoch=epochs_trained,
         callbacks=[
             tensorboard_callback,
-            tf.keras.callbacks.EarlyStopping(monitor='val_accu_free_lunch',
+            tf.keras.callbacks.EarlyStopping(monitor='accu',  # val_accu_free_lunch
                                              patience=10,
                                              restore_best_weights=True),
             lr_sched

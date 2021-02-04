@@ -10,13 +10,13 @@ from math import sqrt
 
 # global parameters
 region_side = 32
-scale = 0.50
-input_folder = 'sirky'
+scale = 0.25
+input_folder = 'sirky_validation'
 labels_file = 'labels.csv'
-output_folder = 'image_regions_{}_{:03d}'.format(region_side, int(scale * 100))
+output_folder = 'image_regions_{}_{:03d}_val'.format(region_side, int(scale * 100))
 
 # input_folder = 'sirky_validation'
-# labels_file = 'labels_validation.csv'
+# labels_file = 'labels.csv'
 # output_folder = 'image_regions_val_{}_{:03d}'.format(region_side, int(scale * 100))
 
 radius = region_side // 2
@@ -138,7 +138,7 @@ if __name__ == '__main__':
                 # test that position is not too close to an existing label
                 for label_pos in file_labels:
                     # file_labels positions are already properly scaled
-                    if euclid_dist(pos, label_pos) < region_side:
+                    if euclid_dist(pos, label_pos) < region_side // 2:
                         repeated += 1
                         repeat = True
 
