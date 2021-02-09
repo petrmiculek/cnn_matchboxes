@@ -15,9 +15,10 @@ def fully_fully_conv(num_classes, name_suffix='', weight_init_idx=0):
     #          32, 32,
     #          64, 64, 64, 64,
     #          128, 128, 128, 128, 128, 128, 128, ]
-    coef = 3
+    coef = 5
     for i in range(1, 16):
-        width = 1 << (ceil(log2(i)) + coef)
+        width = 1 << (i // 4 + coef)  # ceil(log2(i / 2))
+        # width = 64
         model.add(tf.keras.layers.BatchNormalization())
         model.add(tf.keras.layers.Conv2D(width,
                                          3,
@@ -29,10 +30,10 @@ def fully_fully_conv(num_classes, name_suffix='', weight_init_idx=0):
             model.add(tf.keras.layers.MaxPool2D(pool_size=(2, 2), strides=(1, 1), padding='same'))
 
     model.add(tf.keras.layers.BatchNormalization())
-    model.add(tf.keras.layers.Conv2D(32 * 1 << coef, 2, activation='relu', padding='valid', kernel_initializer=init))  # fit-once
+    model.add(tf.keras.layers.Conv2D(16 * 1 << coef, 2, activation='relu', padding='valid', kernel_initializer=init))  # fit-once
 
     model.add(tf.keras.layers.BatchNormalization())
-    model.add(tf.keras.layers.Conv2D(64 * 1 << coef, 1, activation='relu', padding='valid', kernel_initializer=init))
+    model.add(tf.keras.layers.Conv2D(16 * 1 << coef, 1, activation='relu', padding='valid', kernel_initializer=init))
 
     model.add(tf.keras.layers.BatchNormalization())
     model.add(tf.keras.layers.Conv2D(num_classes, 1, activation='relu', padding='valid', kernel_initializer=init))

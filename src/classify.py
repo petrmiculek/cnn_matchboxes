@@ -38,19 +38,9 @@ def heatmaps_all(model, class_names, name):
         predict_full_image(model, class_names,
                            img_path=folder + os.sep + file,
                            heatmap_alpha=0.6,
-                           output_location='heatmaps_fixed' + name,
-                           # output_location=None,
+                           # output_location='heatmaps_fixed' + name,
+                           output_location=None,
                            show_figure=True)
-
-
-accu_sca = tf.metrics.SparseCategoricalAccuracy()
-
-
-def accu_free_lunch(y_true, y_pred):
-    """Fix shape, keep accidental uniform prediction hits"""
-    y_pred_reshaped = tf.reshape(y_pred, [tf.shape(y_pred)[0], tf.shape(y_pred)[3]])
-
-    return accu_sca(y_true, y_pred_reshaped)
 
 
 if __name__ == '__main__':
@@ -107,7 +97,7 @@ if __name__ == '__main__':
     not_printed = True
 
     scce_loss = tf.losses.SparseCategoricalCrossentropy(from_logits=False)
-    accu = util.Accu()
+    accu = util.Accu(name='accu_custom')
     lr_sched = tf.keras.callbacks.LearningRateScheduler(util.lr_scheduler)
 
     epochs_trained = 0
@@ -117,12 +107,7 @@ if __name__ == '__main__':
     model.compile(
         optimizer='adam',
         loss=scce_loss,
-        metrics=[
-                 # 'sparse_categorical_crossentropy',
-                 accu,
-                 # tf.keras.metrics.SparseCategoricalAccuracy(),
-                 # accu_free_lunch
-                 ])
+        metrics=[accu, ])
 
     epochs = 100
 
@@ -134,7 +119,7 @@ if __name__ == '__main__':
         initial_epoch=epochs_trained,
         callbacks=[
             tensorboard_callback,
-            tf.keras.callbacks.EarlyStopping(monitor='accu',  # val_accu_free_lunch
+            tf.keras.callbacks.EarlyStopping(monitor='accu_custom',  # val_accu_free_lunch
                                              patience=10,
                                              restore_best_weights=True),
             lr_sched

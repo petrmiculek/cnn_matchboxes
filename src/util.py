@@ -1,24 +1,9 @@
 # do I need imports here?
 import tensorflow as tf
 
+class Accu(tf.metrics.SparseCategoricalAccuracy):
 
-class Accu:
-    accu_base = tf.metrics.SparseCategoricalAccuracy()
-    __name__ = 'accu'
-
-    @classmethod
-    @tf.function
-    def __call__(cls, y_true, y_pred):
-        """
-        SparseCategoricalAccuracy metric + tweaks
-
-        input reshaped from (Batch, 1, 1, 8) to (Batch, 8)
-        prediction fails for equal probabilities
-        (Had I not done this explicitly,
-        argmax would output 0 and sometimes
-        match the 0=background class label)
-        """
-
+    def update_state(self, y_true, y_pred, sample_weight=None):
         # reshape prediction
         y_pred_reshaped = tf.reshape(y_pred, [tf.shape(y_pred)[0], tf.shape(y_pred)[3]])
 
@@ -26,7 +11,7 @@ class Accu:
         cond = tf.expand_dims(tf.math.equal(tf.math.reduce_max(y_pred_reshaped, axis=1), 0.125), axis=1)
         y_avoid_free = tf.where(cond, 7.0, y_true)
 
-        return cls.accu_base(y_avoid_free, y_pred_reshaped)
+        return super(Accu, self).update_state(y_avoid_free, y_pred_reshaped, sample_weight)
 
 
 # class Augmentation:
