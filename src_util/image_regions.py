@@ -8,23 +8,30 @@ from labels import load_labels, img_dims
 import random
 from math import sqrt
 
+import pandas as pd
+
 # global parameters
 region_side = 32
-scale = 0.25
-input_folder = 'sirky_validation'
+scale = 0.50
+input_folder = 'sirky'  # _validation
 labels_file = 'labels.csv'
-output_folder = 'image_regions_{}_{:03d}_val'.format(region_side, int(scale * 100))
+output_folder = 'image_regions_{}_{:03d}'.format(region_side, int(scale * 100))  # _val
+bg_csv_file = 'background'  # _val
+merged_labels_bg_csv = 'labels_with_bg'  # _val
 
-# input_folder = 'sirky_validation'
-# labels_file = 'labels.csv'
-# output_folder = 'image_regions_val_{}_{:03d}'.format(region_side, int(scale * 100))
+# swapping of generating keypoint/background cutouts
+do_foreground = True
+do_background = True
+
+val = False
+if val:
+    input_folder += '_validation'
+    output_folder += '_val'
+    bg_csv_file += '_val'
+    merged_labels_bg_csv += '_val'
 
 radius = region_side // 2
 random.seed(1234)
-
-
-# def random_color():
-#     return randint(0, 255), randint(0, 255), randint(0, 255)
 
 
 # different from show_images_labelled -- investigate
@@ -97,56 +104,78 @@ if __name__ == '__main__':
     for file in labels:  # dict of labelled_files
 
         img = cv.imread(input_folder + os.sep + file)
+        orig_size = img.shape[1], img.shape[0]
         img = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))  # reversed indices, OK
         file_labels = []
 
-        # generating regions from labels = keypoints
-        for category in labels[file]:  # dict of categories
+        if do_foreground:
+            # generating regions from labels = keypoints
+            for category in labels[file]:  # dict of categories
+                if not os.path.isdir(output_folder + os.sep + category):
+                    os.makedirs(output_folder + os.sep + category, exist_ok=True)
+
+                for label_pos in labels[file][category]:  # list of labels
+                    label_pos_scaled = int(int(label_pos[1]) * scale), int(int(label_pos[0]) * scale)
+                    # ^ inner int() does parsing, not rounding
+
+                    file_labels.append(label_pos_scaled)
+
+                    region = cut_out_around_point(img, label_pos_scaled)
+
+                    # save image
+                    region_path = output_folder + os.sep + category + os.sep  # per category folder
+                    region_filename = file.split('.')[0] + '_(' + str(label_pos[0]) + ',' + str(label_pos[1]) + ').jpg'
+
+                    tmp = cv.imwrite(region_path + region_filename, region)
+
+        if do_background:
+            # generating regions from the background
+            category = 'background'
             if not os.path.isdir(output_folder + os.sep + category):
                 os.makedirs(output_folder + os.sep + category, exist_ok=True)
 
-            for label_pos in labels[file][category]:  # list of labels
-                label_pos_scaled = int(int(label_pos[1]) * scale), int(int(label_pos[0]) * scale)
-                # ^ inner int() does parsing, not rounding
+            padding = img.shape[0] // 3
+            cutout_padding = radius  # radius -> full image, padding -> center
 
-                file_labels.append(label_pos_scaled)
+            repeated = 0
+            # save background positions to a csv file (same structure as keypoints)
+            with open(bg_csv_file + '.csv', 'a') as csvfile:
+                out_csv = csv.writer(csvfile, delimiter=',', quoting=csv.QUOTE_MINIMAL)
 
-                region = cut_out_around_point(img, label_pos_scaled)
+                for i in range(100):  # how many background samples from image
+                    pos = (0, 0)
+                    repeat = True
+                    while repeat:
+                        repeat = False
+                        # generate position (region-center)
+                        pos = int(random.randint(cutout_padding, img.shape[0] - cutout_padding)), \
+                              int(random.randint(cutout_padding, img.shape[1] - cutout_padding))
 
-                # save image
-                region_path = output_folder + os.sep + category + os.sep  # per category folder
-                region_filename = file.split('.')[0] + '_(' + str(label_pos[0]) + ',' + str(label_pos[1]) + ').jpg'
+                        # test that position is not too close to an existing label
+                        for label_pos in file_labels:
+                            # both file_labels positions and pos are already properly scaled
+                            if euclid_dist(pos, label_pos) < 5:  # or use: region_side // 4
+                                repeated += 1
+                                repeat = True
 
-                tmp = cv.imwrite(region_path + region_filename, region)
+                    region_background = cut_out_around_point(img, pos)
+                    region_path = output_folder + os.sep + category + os.sep  # per category folder
 
-        # generating regions from the background
-        category = 'background'
-        if not os.path.isdir(output_folder + os.sep + category):
-            os.makedirs(output_folder + os.sep + category, exist_ok=True)
+                    # since positions were generated already re-scaled, de-scale them when writing
+                    x, y = str(int(pos[1] // scale)), str(int(pos[0] // scale))
 
-        repeated = 0
-        for i in range(50):
-            pos = (0, 0)
-            repeat = True
-            while repeat:
-                repeat = False
-                # generate position (region-center)
-                pos = int(random.randint(radius, img.shape[0] - radius)), \
-                      int(random.randint(radius, img.shape[1] - radius))
-                # todo removed scaling here
+                    region_filename = file.split('.')[0] + '_(' + x + ',' + y + ').jpg'
 
-                # test that position is not too close to an existing label
-                for label_pos in file_labels:
-                    # file_labels positions are already properly scaled
-                    if euclid_dist(pos, label_pos) < region_side // 2:
-                        repeated += 1
-                        repeat = True
-
-            region_background = cut_out_around_point(img, pos)
-            region_path = output_folder + os.sep + category + os.sep  # per category folder
-            region_filename = file.split('.')[0] + '_(' + str(pos[0]) + ',' + str(pos[1]) + ').jpg'
-
-            tmp = cv.imwrite(region_path + region_filename, region_background)
+                    tmp = cv.imwrite(region_path + region_filename, region_background)
+                    out_csv.writerow(['background', x, y, file, orig_size[0], orig_size[1]])
 
         # how many generated positions were wrong (= too close to keypoints)
         # print(repeated)
+
+    if do_background:
+        # Merge keypoints + background csv for cutout positions visualization
+        labels_csv = pd.read_csv(input_folder + os.sep + labels_file, header=None)
+        bg_csv = pd.read_csv(bg_csv_file + '.csv', header=None)
+        merged = pd.concat([labels_csv, bg_csv], ignore_index=True)
+
+        merged.to_csv(merged_labels_bg_csv + '.csv', header=False, index=False, encoding='utf-8')

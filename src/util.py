@@ -1,8 +1,8 @@
 # do I need imports here?
 import tensorflow as tf
 
-class Accu(tf.metrics.SparseCategoricalAccuracy):
 
+class Accu(tf.metrics.SparseCategoricalAccuracy):
     def update_state(self, y_true, y_pred, sample_weight=None):
         # reshape prediction
         y_pred_reshaped = tf.reshape(y_pred, [tf.shape(y_pred)[0], tf.shape(y_pred)[3]])
@@ -25,10 +25,12 @@ class Accu(tf.metrics.SparseCategoricalAccuracy):
 #         return self.model(*args, **kwargs)
 
 
-def lr_scheduler(epoch, lr, start=10, decay=-0.1):
+def lr_scheduler(epoch, lr, start=10, decay=-0.10):
     """
 
-    https://keras.io/api/callbacks/learning_rate_scheduler/
+    https://keras.io/api/callbacks/learning_r
+
+    ate_scheduler/
 
     :param epoch:
     :param lr:

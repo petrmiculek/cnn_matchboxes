@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """
+Google colab live version from ~december
 https://colab.research.google.com/drive/1F28FEGGLmy8-jW9IaOo60InR9VQtPbmG
 
-21. 12.
-zkus znovu projit tutorial na fine-tuning, pripadne grad cam
 
 
 """
@@ -13,6 +12,7 @@ import sys
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 import datetime
+import os
 
 import cv2 as cv
 import numpy as np
@@ -32,9 +32,9 @@ import matplotlib.cm as cm
 
 # extracted for timing purposes
 def heatmaps_all(model, class_names, name):
-    folder = 'sirky_validation'
+    folder = 'sirky_validation'  # _validation
     labels = list(load_labels(folder + os.sep + 'labels.csv', use_full_path=False))
-    for file in labels:
+    for file in labels:  # [-7:-5] for train_ds
         predict_full_image(model, class_names,
                            img_path=folder + os.sep + file,
                            heatmap_alpha=0.6,
@@ -80,12 +80,13 @@ if __name__ == '__main__':
     augment = False
 
     name = util.safestr(f'{augment=}')
-    model = models.fully_fully_conv(num_classes, name_suffix=name, weight_init_idx=1)
+    model = models.fully_fully_conv(num_classes, name_suffix=name)
+    print(model.summary())
 
     if augment:
         data_augmentation = tf.keras.Sequential([
             tf.keras.layers.experimental.preprocessing.RandomFlip("horizontal"),
-            # tf.keras.layers.experimental.preprocessing.RandomRotation(0.2),
+            # tf.keras.layers.experimental.preprocessing.RandomRotation(0.2, fill_mode='reflect'),
         ])
 
         model = tf.keras.Sequential([data_augmentation, model, ], name=model.name)
@@ -105,7 +106,7 @@ if __name__ == '__main__':
 
     """ Train the model"""
     model.compile(
-        optimizer='adam',
+        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
         loss=scce_loss,
         metrics=[accu, ])
 
@@ -121,7 +122,8 @@ if __name__ == '__main__':
             tensorboard_callback,
             tf.keras.callbacks.EarlyStopping(monitor='accu_custom',  # val_accu_free_lunch
                                              patience=10,
-                                             restore_best_weights=True),
+                                             # restore_best_weights=True,
+                                             ),
             lr_sched
         ],
         class_weight=class_weights
@@ -140,21 +142,3 @@ if __name__ == '__main__':
     # sys.exit(0)
 
 """dump"""
-
-"""
-class CustomSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
-  def __init__(self, d_model, warmup_steps=10):
-    super(CustomSchedule, self).__init__()
-
-    self.d_model = d_model
-    self.d_model = tf.cast(self.d_model, tf.float32)
-
-    self.warmup_steps = warmup_steps
-
-  def __call__(self, step):
-    arg1 = tf.math.rsqrt(step)
-    arg2 = step * (self.warmup_steps ** -1.5)
-
-    return tf.math.rsqrt(self.d_model) * tf.math.minimum(arg1, arg2)
-
-"""

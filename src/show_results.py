@@ -102,8 +102,9 @@ def visualize_results(model, dataset, class_names, epochs_trained,
     else:
         misclassified_folder = None
 
-    # misclassified_regions(imgs, labels, class_names, predictions,
-    #                       false_predictions, misclassified_folder, show_misclassified)
+    if show_misclassified:
+        misclassified_regions(imgs, labels, class_names, predictions,
+                              false_predictions, misclassified_folder, show_misclassified)
 
     """Confusion matrix"""
     confusion_matrix(model, class_names, epochs_trained, labels,
@@ -117,10 +118,10 @@ def visualize_results(model, dataset, class_names, epochs_trained,
 
     # print(labels.shape, predictions.shape)  # debug
 
-    # print('Accuracy:', 100.0 * (1 - len(false_predictions) / len(predictions)), '%')
-    # print('Prediction types:\n',
-    #       '\tConfident: {0:0.2f}\n'.format(confident),
-    #       '\tUndecided: {0:0.2f}'.format(undecided))
+    print('Accuracy:', 100.0 * (1 - len(false_predictions) / len(predictions)), '%')
+    print('Prediction types:\n',
+          '\tConfident: {}\n'.format(confident),
+          '\tUndecided: {}'.format(undecided))
 
     """
     for i in undecided_idx:

@@ -55,7 +55,11 @@ if __name__ == '__main__':
         os.makedirs(output_folder, exist_ok=True)
 
     # dict of labelled_files
-    labels = load_labels(input_folder + os.sep + labels_file, use_full_path=False)
+    # A) show keypoints only
+    # labels = load_labels(input_folder + os.sep + labels_file, use_full_path=False)
+
+    # B) show keypoints and sampled background positions
+    labels = load_labels('labels_with_bg.csv', use_full_path=False)
 
     if show_images:
         cv.namedWindow(window_name, cv.WINDOW_GUI_NORMAL)
@@ -68,7 +72,7 @@ if __name__ == '__main__':
         'edge-top': (50, 255, 255),
         'edge-side': (255, 100, 50),
         'edge-bottom': (50, 255, 50),
-        'default': (150, 150, 150),
+        'background': (200, 200, 200),
     }
 
     images_total = len(labels)

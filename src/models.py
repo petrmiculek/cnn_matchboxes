@@ -1,4 +1,5 @@
 import tensorflow as tf
+from tensorflow.keras.layers import *  # add, Conv2D, BatchNormalization, Softmax, experimental, Input, MaxPool2D
 import numpy as np
 from math import log2, ceil
 import util
@@ -15,7 +16,7 @@ def fully_fully_conv(num_classes, name_suffix='', weight_init_idx=0):
     #          32, 32,
     #          64, 64, 64, 64,
     #          128, 128, 128, 128, 128, 128, 128, ]
-    coef = 5
+    coef = 4
     for i in range(1, 16):
         width = 1 << (i // 4 + coef)  # ceil(log2(i / 2))
         # width = 64
@@ -26,11 +27,12 @@ def fully_fully_conv(num_classes, name_suffix='', weight_init_idx=0):
                                          padding='valid',
                                          kernel_initializer=init,
                                          ))
-        if i < 4:
+        if i % 4 == 2:
             model.add(tf.keras.layers.MaxPool2D(pool_size=(2, 2), strides=(1, 1), padding='same'))
 
     model.add(tf.keras.layers.BatchNormalization())
-    model.add(tf.keras.layers.Conv2D(16 * 1 << coef, 2, activation='relu', padding='valid', kernel_initializer=init))  # fit-once
+    model.add(tf.keras.layers.Conv2D(16 * 1 << coef, 2, activation='relu', padding='valid',
+                                     kernel_initializer=init))  # fit-once
 
     model.add(tf.keras.layers.BatchNormalization())
     model.add(tf.keras.layers.Conv2D(16 * 1 << coef, 1, activation='relu', padding='valid', kernel_initializer=init))
@@ -42,9 +44,69 @@ def fully_fully_conv(num_classes, name_suffix='', weight_init_idx=0):
     return model
 
 
-def fully_conv(num_classes, weight_init_idx=0):
+def fully_conv_tff(num_classes, name_suffix=''):
     """
-    Currently used model
+    rewriting fully_fully_conv into TF.Functional
+    not used yet
+
+    :param num_classes:
+    :param name_suffix:
+    :return:
+    """
+    init = tf.keras.initializers.he_normal()
+    # name="fcn_16layers_" + name_suffix
+    coef = 4
+    width = 16
+
+    # x = Input(shape=(None, None, 3))
+    x = Input(shape=(32, 32, 3))
+    x = experimental.preprocessing.Rescaling(1. / 255)(x)
+
+    # x = Conv2D(width,
+    #            3,
+    #            activation='relu',
+    #            padding='valid',
+    #            kernel_initializer=init)(x)
+
+    for i in range(1, 8):
+        width = 1 << (i // 4 + coef)  # ceil(log2(i / 2))
+
+        y = Cropping2D(cropping=((2, 2), (2, 2)))(x)
+
+        x = BatchNormalization()(x)
+        x = Conv2D(width,
+                   3,
+                   activation='relu',
+                   padding='valid',
+                   kernel_initializer=init)(x)
+        x = Conv2D(width,
+                   3,
+                   activation=None,
+                   padding='valid',
+                   kernel_initializer=init)(x)
+
+        # if i % 2 == 0:
+        #     x = MaxPool2D(pool_size=(2, 2), strides=(1, 1), padding='same')(x)
+
+        x = tf.keras.layers.add([x, y])
+
+    x = BatchNormalization()(x)
+    x = Conv2D(16 * 1 << coef, 2, activation='relu', padding='valid', kernel_initializer=init)(x)  # fit-once
+
+    x = BatchNormalization()(x)
+    x = Conv2D(16 * 1 << coef, 1, activation='relu', padding='valid', kernel_initializer=init)(x)
+
+    x = BatchNormalization()(x)
+    x = Conv2D(num_classes, 1, activation='relu', padding='valid', kernel_initializer=init)(x)
+
+    x = Softmax()(x)
+    return x
+
+
+def fully_conv_maxpool_div(num_classes, weight_init_idx=0):
+    """
+    Worked well
+    output res 23 x 31
 
     Solved problems with accuracy not improving.
     Solved free points for uniform predictions.
@@ -84,7 +146,7 @@ def fully_conv(num_classes, weight_init_idx=0):
     return model
 
 
-def fully_conv_tutorial(num_classes, input_dim=(64, 64, 3)):
+def fully_conv_failed_attempt(num_classes, input_dim=(64, 64, 3)):
     """
     does not train at all
 
@@ -148,18 +210,6 @@ def conv_tutorial_deeper(num_classes, first_conv=32):
         ]
         , name='sequential_4conv_{}channels_doubling'.format(first_conv)
     )
-
-
-def residual1(num_classes, first_conv=32):
-    """
-    WIP ResNet-like model
-    """
-
-    def res_block(channels=first_conv):
-        pass
-
-    return tf.keras.models.Functional()
-    pass
 
 
 def conv_tutorial_init(num_classes, first_conv=32):
