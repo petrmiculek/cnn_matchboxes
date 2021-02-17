@@ -81,15 +81,15 @@ if __name__ == '__main__':
     """ Create/Load a model """
     augment = True
 
-    name = util.safestr(f'{augment=}')
+    name = util.safestr('aug_{}'.format(augment))
     model = models.fully_conv_tff(num_classes, name_suffix=name)
     print(model.summary())
-    # keras.utils.plot_model(model, "my_first_model_with_shape_info.png", show_shapes=True)
+    tf.keras.utils.plot_model(model, model.name + "_architecture_graph.png", show_shapes=True)
 
     if augment:
         data_augmentation = tf.keras.Sequential([
             tf.keras.layers.experimental.preprocessing.RandomFlip("horizontal"),
-            tf.keras.layers.experimental.preprocessing.RandomRotation(0.2, fill_mode='reflect'),
+            # tf.keras.layers.experimental.preprocessing.RandomRotation(0.2, fill_mode='reflect'),
         ])
 
         model = tf.keras.Sequential([data_augmentation, model, ], name=model.name)
