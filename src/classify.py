@@ -30,16 +30,18 @@ from IPython.display import Image, display
 import matplotlib.cm as cm
 
 
-# extracted for timing purposes
-def heatmaps_all(model, class_names, name):
-    folder = 'sirky_validation'  # _validation
+def heatmaps_all(model, class_names, name, val=True):
+    folder = 'sirky' + '_validation' * val
     labels = list(load_labels(folder + os.sep + 'labels.csv', use_full_path=False))
+    # if not val:
+    #     labels = labels[-7:-5]
+
     for file in labels:  # [-7:-5] for train_ds
         predict_full_image(model, class_names,
                            img_path=folder + os.sep + file,
                            heatmap_alpha=0.6,
-                           # output_location='heatmaps_fixed' + name,
-                           output_location=None,
+                           output_location='heatmaps_before_manual' + name,
+                           # output_location=None,
                            show_figure=True)
 
 
@@ -77,23 +79,20 @@ if __name__ == '__main__':
     # for i, (logits, augment) in enumerate(list(product([True, False], [True, False]))):
 
     """ Create/Load a model """
-    augment = False
+    augment = True
 
     name = util.safestr(f'{augment=}')
-    model = models.fully_fully_conv(num_classes, name_suffix=name)
+    model = models.fully_conv_tff(num_classes, name_suffix=name)
     print(model.summary())
+    # keras.utils.plot_model(model, "my_first_model_with_shape_info.png", show_shapes=True)
 
     if augment:
         data_augmentation = tf.keras.Sequential([
             tf.keras.layers.experimental.preprocessing.RandomFlip("horizontal"),
-            # tf.keras.layers.experimental.preprocessing.RandomRotation(0.2, fill_mode='reflect'),
+            tf.keras.layers.experimental.preprocessing.RandomRotation(0.2, fill_mode='reflect'),
         ])
 
         model = tf.keras.Sequential([data_augmentation, model, ], name=model.name)
-
-    # unused
-    # learning_rate = CustomSchedule(d_model)
-    # optimizer = tf.keras.optimizers.Adam(learning_rate)
 
     not_printed = True
 
@@ -110,7 +109,7 @@ if __name__ == '__main__':
         loss=scce_loss,
         metrics=[accu, ])
 
-    epochs = 100
+    epochs = 40
 
     history = model.fit(
         train_ds,
@@ -120,9 +119,8 @@ if __name__ == '__main__':
         initial_epoch=epochs_trained,
         callbacks=[
             tensorboard_callback,
-            tf.keras.callbacks.EarlyStopping(monitor='accu_custom',  # val_accu_free_lunch
+            tf.keras.callbacks.EarlyStopping(monitor='accu_custom',
                                              patience=10,
-                                             # restore_best_weights=True,
                                              ),
             lr_sched
         ],
@@ -133,11 +131,12 @@ if __name__ == '__main__':
     """Evaluate model"""
 
     # output_location = None
-    visualize_results(model, val_ds, class_names, epochs_trained, output_location, show_figure=True)
+    visualize_results(model, val_ds, class_names, epochs_trained, output_location, show_figure=True, show_misclassified=False)
     visualize_results(model, train_ds, class_names, epochs_trained, output_location, show_figure=True)
 
     """Predict full image"""
-    heatmaps_all(model, class_names, name)
+    heatmaps_all(model, class_names, name, val=True)
+    heatmaps_all(model, class_names, name, val=False)
 
     # sys.exit(0)
 

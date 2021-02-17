@@ -135,7 +135,7 @@ if __name__ == '__main__':
                 os.makedirs(output_folder + os.sep + category, exist_ok=True)
 
             padding = img.shape[0] // 3
-            cutout_padding = radius  # radius -> full image, padding -> center
+            cutout_padding = padding  # radius -> full image, padding -> center
 
             repeated = 0
             # save background positions to a csv file (same structure as keypoints)
@@ -148,7 +148,7 @@ if __name__ == '__main__':
                     while repeat:
                         repeat = False
                         # generate position (region-center)
-                        pos = int(random.randint(cutout_padding, img.shape[0] - cutout_padding)), \
+                        pos = int(random.randint(cutout_padding - 500, img.shape[0] - cutout_padding)), \
                               int(random.randint(cutout_padding, img.shape[1] - cutout_padding))
 
                         # test that position is not too close to an existing label
@@ -179,3 +179,5 @@ if __name__ == '__main__':
         merged = pd.concat([labels_csv, bg_csv], ignore_index=True)
 
         merged.to_csv(merged_labels_bg_csv + '.csv', header=False, index=False, encoding='utf-8')
+
+# todo warning - manually created background labels won't be in background.csv

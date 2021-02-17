@@ -5,6 +5,15 @@ from math import log2, ceil
 import util
 
 
+def fcn_dilated(num_classes, name_suffix=''):
+    model = tf.keras.Sequential(name='dilated')
+    model.add(Input(shape=(None, None, 3)))
+    dilation = 1
+    for i in range(8):
+        width = 16
+        model.add(Conv2D(width, activation='relu', padding='valid', dilation_rate=dilation))
+
+
 def fully_fully_conv(num_classes, name_suffix='', weight_init_idx=0):
     init = tf.keras.initializers.he_normal()
     model = tf.keras.Sequential(name="fcn_16layers_" + name_suffix)
@@ -16,7 +25,7 @@ def fully_fully_conv(num_classes, name_suffix='', weight_init_idx=0):
     #          32, 32,
     #          64, 64, 64, 64,
     #          128, 128, 128, 128, 128, 128, 128, ]
-    coef = 4
+    coef = 5
     for i in range(1, 16):
         width = 1 << (i // 4 + coef)  # ceil(log2(i / 2))
         # width = 64
@@ -27,7 +36,7 @@ def fully_fully_conv(num_classes, name_suffix='', weight_init_idx=0):
                                          padding='valid',
                                          kernel_initializer=init,
                                          ))
-        if i % 4 == 2:
+        if i % 4 == 3:
             model.add(tf.keras.layers.MaxPool2D(pool_size=(2, 2), strides=(1, 1), padding='same'))
 
     model.add(tf.keras.layers.BatchNormalization())
@@ -53,24 +62,32 @@ def fully_conv_tff(num_classes, name_suffix=''):
     :param name_suffix:
     :return:
     """
+
     init = tf.keras.initializers.he_normal()
     # name="fcn_16layers_" + name_suffix
     coef = 4
     width = 16
 
     # x = Input(shape=(None, None, 3))
-    x = Input(shape=(32, 32, 3))
-    x = experimental.preprocessing.Rescaling(1. / 255)(x)
+    input_layer = Input(shape=(32, 32, 3))
+    x = experimental.preprocessing.Rescaling(1. / 255)(input_layer)
 
     # x = Conv2D(width,
     #            3,
     #            activation='relu',
     #            padding='valid',
     #            kernel_initializer=init)(x)
+    width = 32
+
+    x = BatchNormalization()(x)
+    x = Conv2D(width,
+               3,
+               activation='relu',
+               padding='valid',
+               kernel_initializer=init)(x)
 
     for i in range(1, 8):
-        width = 1 << (i // 4 + coef)  # ceil(log2(i / 2))
-
+        # width = 1 << (i // 4 + coef)  # ceil(log2(i / 2))
         y = Cropping2D(cropping=((2, 2), (2, 2)))(x)
 
         x = BatchNormalization()(x)
@@ -79,6 +96,7 @@ def fully_conv_tff(num_classes, name_suffix=''):
                    activation='relu',
                    padding='valid',
                    kernel_initializer=init)(x)
+
         x = Conv2D(width,
                    3,
                    activation=None,
@@ -100,7 +118,7 @@ def fully_conv_tff(num_classes, name_suffix=''):
     x = Conv2D(num_classes, 1, activation='relu', padding='valid', kernel_initializer=init)(x)
 
     x = Softmax()(x)
-    return x
+    return tf.keras.Model(inputs=input_layer, outputs=x, name='tff_' + name_suffix)
 
 
 def fully_conv_maxpool_div(num_classes, weight_init_idx=0):

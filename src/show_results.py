@@ -31,14 +31,18 @@ def confusion_matrix(model, class_names, epochs_trained, labels,
         fig_cm.figure.show()
 
     if output_location:
-        fig_cm.figure.savefig(os.path.join(output_location, 'confusion_matrix.png'), bbox_inches='tight')
+        # todo fix file name to be unique
+        fig_cm.figure.savefig(os.path.join(output_location, 'confusion_matrix' + model.name + '.png'), bbox_inches='tight')
 
     plt.close(fig_cm.figure)
 
 
 def misclassified_regions(imgs, labels, class_names, predictions,
-                          false_pred, misclassified_folder, show_misclassified):
-    """Show misclassified regions"""
+                          false_pred, misclassified_folder, show_figure):
+    """Show misclassified regions
+
+    figures=images are saved when the misclassified_folder argument is given
+    """
     for i, idx in enumerate(false_pred):
         label_true = class_names[labels[idx]]
         label_predicted = class_names[predictions[idx]]
@@ -58,7 +62,7 @@ def misclassified_regions(imgs, labels, class_names, predictions,
                 os.makedirs(d)
             fig.axes.figure.savefig(fig_location, bbox_inches='tight')
 
-        if show_misclassified:
+        if show_figure:
             fig.axes.figure.show()
 
         plt.close(fig.axes.figure)
@@ -104,7 +108,7 @@ def visualize_results(model, dataset, class_names, epochs_trained,
 
     if show_misclassified:
         misclassified_regions(imgs, labels, class_names, predictions,
-                              false_predictions, misclassified_folder, show_misclassified)
+                              false_predictions, misclassified_folder, show_figure=True)
 
     """Confusion matrix"""
     confusion_matrix(model, class_names, epochs_trained, labels,
