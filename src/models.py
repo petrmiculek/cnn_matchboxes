@@ -67,9 +67,9 @@ def fully_conv_tff(num_classes, name_suffix=''):
     # name="fcn_16layers_" + name_suffix
     coef = 4
 
-    # x = Input(shape=(None, None, 3))
     input_layer = Input(shape=(None, None, 3))
-    x = experimental.preprocessing.Rescaling(1. / 255)(input_layer)
+    # input_layer = Input(shape=(32, 32, 3))
+    # x = experimental.preprocessing.Rescaling(1. / 255)(input_layer)
 
     # x = Conv2D(width,
     #            3,
@@ -95,6 +95,8 @@ def fully_conv_tff(num_classes, name_suffix=''):
                    activation='relu',
                    padding='valid',
                    kernel_initializer=init)(x)
+
+        x = BatchNormalization()(x)
 
         x = Conv2D(width,
                    3,

@@ -1,3 +1,4 @@
+import functools
 import os
 import numpy as np
 import seaborn as sns
@@ -5,6 +6,8 @@ import tensorflow as tf
 from matplotlib import pyplot as plt
 from sklearn.metrics import confusion_matrix as conf_mat
 import cv2 as cv
+from math import ceil
+from scipy.spatial.distance import cdist
 
 
 def confusion_matrix(model, class_names, epochs_trained, labels,
@@ -32,7 +35,8 @@ def confusion_matrix(model, class_names, epochs_trained, labels,
 
     if output_location:
         # todo fix file name to be unique
-        fig_cm.figure.savefig(os.path.join(output_location, 'confusion_matrix' + model.name + '.png'), bbox_inches='tight')
+        fig_cm.figure.savefig(os.path.join(output_location, 'confusion_matrix' + model.name + '.png'),
+                              bbox_inches='tight')
 
     plt.close(fig_cm.figure)
 
@@ -42,7 +46,9 @@ def misclassified_regions(imgs, labels, class_names, predictions,
     """Show misclassified regions
 
     figures=images are saved when the misclassified_folder argument is given
+    # todo alternative version with grid-like output
     """
+
     for i, idx in enumerate(false_pred):
         label_true = class_names[labels[idx]]
         label_predicted = class_names[predictions[idx]]
@@ -68,7 +74,7 @@ def misclassified_regions(imgs, labels, class_names, predictions,
         plt.close(fig.axes.figure)
 
 
-def visualize_results(model, dataset, class_names, epochs_trained, 
+def visualize_results(model, dataset, class_names, epochs_trained,
                       output_location=None, show_figure=False, show_misclassified=False):
     """Show misclassified regions and confusion matrix
 
@@ -101,7 +107,8 @@ def visualize_results(model, dataset, class_names, epochs_trained,
 
     """Misclassified regions"""
     if output_location:
-        misclassified_folder = output_location + os.sep + 'missclassified_regions_{}_e{}'.format(model.name, epochs_trained)
+        misclassified_folder = output_location + os.sep + 'missclassified_regions_{}_e{}'.format(model.name,
+                                                                                                 epochs_trained)
         os.makedirs(misclassified_folder, exist_ok=True)
     else:
         misclassified_folder = None
@@ -122,7 +129,7 @@ def visualize_results(model, dataset, class_names, epochs_trained,
 
     # print(labels.shape, predictions.shape)  # debug
 
-    print('Accuracy:', 100.0 * (1 - len(false_predictions) / len(predictions)), '%')
+    print('Accuracy: {0:0.2g}%'.format(100.0 * (1 - len(false_predictions) / len(predictions))))
     print('Prediction types:\n',
           '\tConfident: {}\n'.format(confident),
           '\tUndecided: {}'.format(undecided))
@@ -140,10 +147,56 @@ def visualize_results(model, dataset, class_names, epochs_trained,
     """
 
 
-def predict_full_image(model, class_names, img_path, output_location, 
+def get_image_as_batch(img_path, scale=1.0):
+    """Open and Process image
+
+    :param img_path:
+    :param scale:
+    :return:
+    """
+    img = cv.imread(img_path)
+    h, w, _ = img.shape  # don't use after resizing
+
+    # todo turn into parameter
+    img = img[h // 4: 3 * h // 4, w // 4: 3 * w // 4, :]  # cut out half-sized from center
+    # img = img[h // 3: 2 * h // 3, w // 3: 2 * w // 3, :]  # cut out third-sized from center
+
+    img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
+    img = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))  # reversed indices, OK
+    img_batch = np.expand_dims(img, 0)
+    return img_batch
+
+
+def make_prediction(model, img, maxes_only=False):
+    """Make
+
+    :param model:
+    :param maxes_only:
+    :param img: img as batch
+    :return:
+    """
+
+    predictions_raw = model.predict(tf.convert_to_tensor(img_batch, dtype=tf.uint8))
+    predictions = tf.squeeze(predictions_raw).numpy()
+
+    # Model crops the image, accounting for it
+    # img = img[15:-16, 15:-16]  # todo warning, depends on model cutout size (only works for 32x)
+    # on a second thought, I might not need to do this
+
+    if maxes_only:
+        maxes = np.zeros(predictions.shape)  # todo tf instead of np
+        max_indexes = np.argmax(predictions, axis=-1)
+        maxes[np.arange(predictions.shape[0])[:, None], np.arange(predictions.shape[1]), max_indexes] = 1
+        predictions = maxes
+
+    return predictions
+
+
+def predict_full_image(model, class_names, img_path, output_location,
                        heatmap_alpha=0.7, show_figure=True, maxes_only=False):
     """Show predicted heatmaps for full image
 
+    :param heatmap_alpha:
     :param model:
     :param class_names:
     :param img_path:
@@ -154,33 +207,15 @@ def predict_full_image(model, class_names, img_path, output_location,
 
     scale = 0.5
 
-    # Open and Process image
-    img = cv.imread(img_path)
-    h, w, _ = img.shape  # don't use after resizing
-    img = img[h // 4: 3*h//4, w // 4: 3*w // 4, :]  # cut out half-sized from center
-    # img = img[h // 3: 2 * h // 3, w // 3: 2 * w // 3, :]  # cut out third-sized from center
-    img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
-    img = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))  # reversed indices, OK
-    img_batch = np.expand_dims(img, 0)
+    img = get_image_as_batch(img_path, scale)
 
-    # Make prediction
-    predictions_raw = model.predict(tf.convert_to_tensor(img_batch, dtype=tf.uint8))
-    predictions = tf.squeeze(predictions_raw).numpy()
-
-    # Model crops the image, accounting for it
-    img = img[15:-16, 15:-16]
-
-    if maxes_only:
-        maxes = np.zeros(predictions.shape)
-        max_indexes = np.argmax(predictions, axis=-1)
-        maxes[np.arange(predictions.shape[0])[:, None], np.arange(predictions.shape[1]), max_indexes] = 1
-        predictions = maxes
+    predictions, img_cropped = make_prediction(model, img)
 
     class_activations = []
 
     # Turn predictions into heatmaps superimposed on input image
     predictions = np.uint8(255 * predictions)
-    predictions = cv.resize(predictions, (img.shape[1], img.shape[0]))  # extrapolate predictions
+    predictions = cv.resize(predictions, (img.shape[1], img.shape[0]))  # extrapolate predictions todo should I?
 
     for i in range(0, len(class_names)):
         pred = np.stack((predictions[:, :, i],) * 3, axis=-1)
@@ -196,7 +231,6 @@ def predict_full_image(model, class_names, img_path, output_location,
     fig, axes = plt.subplots(nrows=3, ncols=3, figsize=(10, 10), )
     fig.suptitle('Class Activations Map')
     fig.subplots_adjust(right=0.85, left=0.05)
-
     for i in range(9):
         ax = axes[i // 3, i % 3].imshow(class_activations[i])
         axes[i // 3, i % 3].axis('off')
@@ -217,3 +251,131 @@ def predict_full_image(model, class_names, img_path, output_location,
         fig.savefig(fig_location, bbox_inches='tight')
 
     plt.close(fig)
+
+
+def show_layer_activations(model_orig, model_features, ds):
+    """
+    https://towardsdatascience.com/feature-visualization-on-convolutional-neural-networks-keras-5561a116d1af
+
+    :param model_orig:
+    :param model_features:
+    :param ds:
+    :return:
+    """
+    batch, labels = list(ds)[0]  # first batch, first image
+    batch_img0 = tf.convert_to_tensor(batch[0:1])
+
+    plt.imshow(batch_img0[0].numpy().astype('uint8'), aspect='auto', cmap='viridis', vmin=0, vmax=255)
+    plt.show()
+
+    print('l =', labels[0].numpy())
+    all_layer_activations = model_features(batch_img0, training=False)
+
+    layer_names = []
+
+    for layer in model_orig.layers[1].layers[:]:
+        layer_names.append(layer.name)
+
+    images_per_row = 16
+
+    for layer_name, layer_activation in zip(layer_names, all_layer_activations):  # Displays the feature maps
+        if 'batch_normalization' not in layer_name and layer_name not in layer_names[-3:-1]:
+            continue
+
+        n_features = layer_activation.shape[-1]  # Number of features in the feature map
+        size = layer_activation.shape[1]  # The feature map has shape (1, size, size, n_features).
+        if size == 1:  # caused top == bottom range problems
+            print(f'{layer_name} {n_features=}')
+            continue
+        n_cols = ceil(n_features / images_per_row)  # Tiles the activation channels in this matrix
+        display_grid = np.zeros((size * n_cols, images_per_row * size))
+
+        for col in range(n_cols):  # Tiles each filter into a big horizontal grid
+            for row in range(min(images_per_row, n_features)):
+                channel_image = layer_activation[0, :, :, col * images_per_row + row]
+
+                # don't normalize so as to keep proportions
+                # channel_image -= np.mean(channel_image)
+                # channel_image /= np.std(channel_image)
+
+                channel_image *= 64
+                channel_image += 128
+                channel_image = np.clip(channel_image, 0, 255).astype('uint8')
+                display_grid[col * size: (col + 1) * size,  # Displays the grid
+                row * size: (row + 1) * size] = channel_image
+
+        scale = 1. / size
+        plt.figure(figsize=(scale * display_grid.shape[1],
+                            scale * display_grid.shape[0]))
+        plt.title(layer_name)
+        plt.grid(False)
+        plt.imshow(display_grid, aspect='auto', cmap='viridis', vmin=0, vmax=255)
+        plt.show()
+
+
+def heatmaps_all(model, class_names, name, val=True):
+    folder = 'sirky' + '_validation' * val
+    labels = list(load_labels(folder + os.sep + 'labels.csv', use_full_path=False))
+    # if not val:
+    #     labels = labels[-7:-5]
+
+    for file in labels:  # [-7:-5] for train_ds
+        predict_full_image(model, class_names,
+                           img_path=folder + os.sep + file,
+                           heatmap_alpha=0.6,
+                           output_location='heatmaps_before_manual' + name,
+                           # output_location=None,
+                           show_figure=True)
+
+
+def full_img_loss(prediction, img_name, labels):
+    """full prediction loss function
+
+    non-background: najdi nejbližší keypoint dané třídy pomocí euclid_dist
+
+    background: 0, pokud je více než K pixelů daleko od nejbližšího keypointu libovolné keypoint kategorie
+                jinak X = img.shape[0] * img.shape
+
+
+
+    """
+    category_background = 0
+    min_dist_background = 5
+    min_dist_background_penalty = 10
+
+    file_labels = [val for key, val in labels.items() if img_name in key]
+    if len(file_labels) != 1:
+        return float('NaN')
+    else:
+        file_labels_categories = file_labels[0]
+        file_labels_merged = 'todo merge for background?'
+
+    def pixel_loss(pred):
+        pred = np.argmax(pred, axis=0)
+        if pred == category_background:
+            # background prediction
+            # per_keypoint_dist = map(euclid_dist, labels['background'])
+            per_keypoint_dist = cdist(pred, file_labels[category_background])
+            if np.min(per_keypoint_dist) < min_dist_background:
+                return min_dist_background_penalty
+            else:
+                return 0.0  # correct
+
+        else:
+            # keypoint prediction
+            pred_category = class_names[pred]
+            per_keypoint_dist = map(euclid_dist, labels[pred_category])
+            return np.min(per_keypoint_dist)
+
+    # make prediction one-hot over channels
+    # prediction_one_hot = tf.argmax(, axis=1)
+    # already done in make_prediction
+
+    per_pixel_loss = map(pixel_loss, flatten(prediction))  # function, iterables
+
+    loss_sum = functools.reduce(operator.add, per_pixel_loss)  # todo numpy way
+    # loss_sum = np.sum(per_pixel_loss)
+
+    return loss_sum
+
+

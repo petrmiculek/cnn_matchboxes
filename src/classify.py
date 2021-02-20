@@ -3,8 +3,6 @@
 Google colab live version from ~december
 https://colab.research.google.com/drive/1F28FEGGLmy8-jW9IaOo60InR9VQtPbmG
 
-
-
 """
 import os
 import sys
@@ -12,7 +10,6 @@ import sys
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 import datetime
-import os
 
 import cv2 as cv
 import numpy as np
@@ -21,29 +18,13 @@ import matplotlib as mpl
 from itertools import product
 
 from datasets import get_dataset
-from show_results import visualize_results, predict_full_image
+from show_results import visualize_results, predict_full_image, show_layer_activations, heatmaps_all
 from src_util.labels import load_labels
 import models
 import util
 
 from IPython.display import Image, display
 import matplotlib.cm as cm
-
-
-def heatmaps_all(model, class_names, name, val=True):
-    folder = 'sirky' + '_validation' * val
-    labels = list(load_labels(folder + os.sep + 'labels.csv', use_full_path=False))
-    # if not val:
-    #     labels = labels[-7:-5]
-
-    for file in labels:  # [-7:-5] for train_ds
-        predict_full_image(model, class_names,
-                           img_path=folder + os.sep + file,
-                           heatmap_alpha=0.6,
-                           output_location='heatmaps_before_manual' + name,
-                           # output_location=None,
-                           show_figure=True)
-
 
 if __name__ == '__main__':
     print(f'{tf.__version__=}')
@@ -86,10 +67,14 @@ if __name__ == '__main__':
     print(model.summary())
     tf.keras.utils.plot_model(model, model.name + "_architecture_graph.png", show_shapes=True)
 
+    # extract layer outputs
+    layers_intermediate = [layer.output for layer in model.layers]
+    feat_extraction_model = tf.keras.Model(inputs=model.input, outputs=layers_intermediate)
+
     if augment:
         data_augmentation = tf.keras.Sequential([
             tf.keras.layers.experimental.preprocessing.RandomFlip("horizontal"),
-            # tf.keras.layers.experimental.preprocessing.RandomRotation(0.2, fill_mode='reflect'),
+            tf.keras.layers.experimental.preprocessing.RandomRotation(0.2, fill_mode='reflect'),
         ])
 
         model = tf.keras.Sequential([data_augmentation, model, ], name=model.name)
@@ -109,7 +94,7 @@ if __name__ == '__main__':
         loss=scce_loss,
         metrics=[accu, ])
 
-    epochs = 40
+    epochs = 10
 
     history = model.fit(
         train_ds,
@@ -130,13 +115,16 @@ if __name__ == '__main__':
 
     """Evaluate model"""
 
-    # output_location = None
+    output_location = None
     visualize_results(model, val_ds, class_names, epochs_trained, output_location, show_figure=True, show_misclassified=False)
     visualize_results(model, train_ds, class_names, epochs_trained, output_location, show_figure=True)
 
     """Predict full image"""
-    heatmaps_all(model, class_names, name, val=True)
-    heatmaps_all(model, class_names, name, val=False)
+    # heatmaps_all(model, class_names, name, val=True)
+    # heatmaps_all(model, class_names, name, val=False)
+
+    # show_layer_activations(model, feat_extraction_model, val_ds)
+
 
     # sys.exit(0)
 
