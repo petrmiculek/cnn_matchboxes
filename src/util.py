@@ -1,4 +1,3 @@
-# do I need imports here?
 import tensorflow as tf
 
 
@@ -14,23 +13,10 @@ class Accu(tf.metrics.SparseCategoricalAccuracy):
         return super(Accu, self).update_state(y_avoid_free, y_pred_reshaped, sample_weight)
 
 
-# class Augmentation:
-#     def __init__(self):
-#         self.model = tf.keras.Sequential([
-#             # tf.keras.layers.experimental.preprocessing.RandomFlip('horizontal'),
-#             tf.keras.layers.experimental.preprocessing.RandomRotation(factor=0.2, fill_mode='reflect', seed=1234),
-#         ])
-#
-#     def __call__(self, *args, **kwargs):
-#         return self.model(*args, **kwargs)
-
-
 def lr_scheduler(epoch, lr, start=10, decay=-0.10):
     """
 
-    https://keras.io/api/callbacks/learning_r
-
-    ate_scheduler/
+    https://keras.io/api/callbacks/learning_rate_scheduler/
 
     :param epoch:
     :param lr:
@@ -47,8 +33,7 @@ def lr_scheduler(epoch, lr, start=10, decay=-0.10):
 def safestr(*args):
     """Turn string into a filename
     https://stackoverflow.com/questions/7406102/create-sane-safe-filename-from-any-unsafe-string
-    :param string:
-    :return:
+    :return: sanitized filename-safe string
     """
     string = str(args)
     keepcharacters = (' ', '.', '_')
