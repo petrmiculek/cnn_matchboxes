@@ -81,6 +81,9 @@ def visualize_results(model, dataset, class_names, epochs_trained,
                       output_location=None, show_figure=False, show_misclassified=False):
     """Show misclassified regions and confusion matrix
 
+    Get predictions for whole dataset and manually evaluate the model predictions.
+    Use evaluated results to save misclassified regions and to show a confusion matrix.
+
     :param model:
     :param dataset:
     :param class_names:
@@ -103,7 +106,7 @@ def visualize_results(model, dataset, class_names, epochs_trained,
 
     """Making predictions"""
     predictions_raw = model.predict(tf.convert_to_tensor(imgs, dtype=tf.uint8))
-    predictions_juice = tf.squeeze(predictions_raw)  # squeeze potentially more dimensions
+    predictions_juice = tf.squeeze(predictions_raw)
     predictions = tf.argmax(predictions_juice, axis=1)
 
     false_predictions = np.where(labels != predictions)[0]  # reduce dimensions of a nested array
@@ -150,18 +153,21 @@ def visualize_results(model, dataset, class_names, epochs_trained,
     """
 
 
-def get_image_as_batch(img_path, scale=1.0):
+def get_image_as_batch(img_path, scale=1.0, center_crop_fraction=0.5):
     """Open and Process image
 
+    :param center_crop_fraction:
     :param img_path:
     :param scale:
     :return:
     """
     img = cv.imread(img_path)
     h, w, _ = img.shape  # don't use after resizing
+    low = (1 - center_crop_fraction) / 2
+    high = (1 + center_crop_fraction) / 2
 
-    # todo turn into parameter
-    img = img[h // 4: 3 * h // 4, w // 4: 3 * w // 4, :]  # cut out half-sized from center
+    img = img[h * int(low): h * int(high), w * int(low): w*int(high), :]  # cut out half-sized from center
+    # img = img[h // 4: 3 * h // 4, w // 4: 3 * w // 4, :]  # cut out half-sized from center
     # img = img[h // 3: 2 * h // 3, w // 3: 2 * w // 3, :]  # cut out third-sized from center
 
     img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
@@ -170,19 +176,20 @@ def get_image_as_batch(img_path, scale=1.0):
     return img_batch
 
 
-def make_prediction(model, img, maxes_only=False):
+def make_prediction(model, img, maxes_only=False, undecided_only=False):
     """Make
 
     :param model:
-    :param maxes_only:
     :param img: img as batch
+    :param maxes_only:
+    :param undecided_only:
     :return:
     """
 
     predictions_raw = model.predict(tf.convert_to_tensor(img, dtype=tf.uint8))
     predictions = tf.squeeze(predictions_raw).numpy()
 
-    if maxes_only:
+    if maxes_only and not undecided_only:
         maxes = np.zeros(predictions.shape)  # todo tf instead of np
         max_indexes = np.argmax(predictions, axis=-1)
         maxes[np.arange(predictions.shape[0])[:, None],  # in every row
@@ -190,11 +197,27 @@ def make_prediction(model, img, maxes_only=False):
               max_indexes] = 1  # the maximum-predicted category (=channel) is set to 1
         predictions = maxes
 
+    if undecided_only and not maxes_only:
+        # add undecided predictions - per element [x, y, z])
+        lower_bound_indices = np.where(predictions > 0.1, True, False)
+        upper_bound_indices = np.where(predictions < 0.2, True, False)
+
+        # subtract decisive predictions - per spatial position [x, y, :]
+        decisive_values = np.max(predictions, axis=2)
+        decisive_indices = np.where(decisive_values > 0.8, True, False)
+        decisive_indices = np.stack((decisive_indices,) * 8, axis=-1)
+
+        undecided = np.where(lower_bound_indices, 1, 0)
+        undecided = np.where(upper_bound_indices, undecided, 0)
+        undecided = np.where(decisive_indices, 0, undecided)
+
+        predictions = undecided
+
     return predictions
 
 
 def predict_full_image(model, class_names, labels, img_path, output_location,
-                       heatmap_alpha=0.6, show_figure=True, maxes_only=False):
+                       heatmap_alpha=0.6, show_figure=True, maxes_only=False, undecided_only=False):
     """Show predicted heatmaps for full image
 
     :param labels:
@@ -205,24 +228,37 @@ def predict_full_image(model, class_names, labels, img_path, output_location,
     :param output_location:
     :param show_figure:
     :param maxes_only: Show only the top predicted category per point.
+    :param undecided_only: Show only predictions that were
     """
 
     scale = 0.5
 
     img = get_image_as_batch(img_path, scale)
 
-    predictions = make_prediction(model, img, maxes_only)
-    img = img[0]  # or np.squeeze; remove batch dimension
+    predictions = make_prediction(model, img, maxes_only, undecided_only)
+    img = img[0]  # remove batch dimension
 
-    # Model crops the image, accounting for it
+    # Model prediction is "cropped", adjust image accordingly
     img = img[15:-16, 15:-16]  # warning, depends on model cutout size (only works for 32x)
 
-    img_loss = full_img_loss(predictions, img_path, labels, class_names)
+    if undecided_only:
+        plots_title = 'undecided'
+    elif maxes_only:
+        plots_title = 'maxes'
+    else:
+        img_loss = full_img_pred_error(predictions, img_path, img, labels, class_names)
+        plots_title = str(img_loss // 1e6) + 'M'
 
-    class_activations = []
+    display_predictions(predictions, img, img_path, class_names, model, plots_title,
+                        heatmap_alpha, show_figure, output_location)
+
+
+def display_predictions(predictions, img, img_path, class_names, model, title='',
+                        heatmap_alpha=0.6, show_figure=True, output_location=None):
 
     # Turn predictions into heatmaps superimposed on input image
     predictions = np.uint8(255 * predictions)
+    class_activations = []
 
     for i in range(0, len(class_names)):
         pred = np.stack((predictions[:, :, i],) * 3, axis=-1)
@@ -236,7 +272,7 @@ def predict_full_image(model, class_names, labels, img_path, output_location,
 
     # Plot heatmaps
     fig, axes = plt.subplots(nrows=3, ncols=3, figsize=(10, 10), )
-    fig.suptitle('Class Activations Map\n{}M'.format(img_loss // 1e6))
+    fig.suptitle('Heatmaps\n{}'.format(title))
     fig.subplots_adjust(right=0.85, left=0.05)
     for i in range(9):
         ax = axes[i // 3, i % 3].imshow(class_activations[i])
@@ -244,7 +280,6 @@ def predict_full_image(model, class_names, labels, img_path, output_location,
         axes[i // 3, i % 3].set_title(subplot_titles[i])
 
     fig.tight_layout()
-
     if show_figure:
         fig.show()
 
@@ -260,23 +295,29 @@ def predict_full_image(model, class_names, labels, img_path, output_location,
     plt.close(fig)
 
 
-def show_layer_activations(model_orig, model_features, ds):
-    """
+def show_layer_activations(model_orig, model_features, ds, class_names):
+    """Predict single cutout and show network's layer activations
+
+    Adapted from:
     https://towardsdatascience.com/feature-visualization-on-convolutional-neural-networks-keras-5561a116d1af
+
+    todo broken as of introducing the crop
 
     :param model_orig:
     :param model_features:
     :param ds:
+    :param class_names:
     :return:
     """
-    batch, labels = list(ds)[0]  # first batch, first image
-    batch_img0 = tf.convert_to_tensor(batch[0:1])
+    batch, labels = list(ds)[0]  # first batch
+    batch_img0 = tf.convert_to_tensor(batch[0:1])  # first image (made to a 1-element batch)
 
     plt.imshow(batch_img0[0].numpy().astype('uint8'), aspect='auto', cmap='viridis', vmin=0, vmax=255)
     plt.show()
 
-    print('l =', labels[0].numpy())
+    print('GT label =', class_names[int(labels[0].numpy())])
     all_layer_activations = model_features(batch_img0, training=False)
+    print('pred     =', all_layer_activations[-1].numpy().shape)
 
     layer_names = []
 
@@ -286,6 +327,7 @@ def show_layer_activations(model_orig, model_features, ds):
     images_per_row = 16
 
     for layer_name, layer_activation in zip(layer_names, all_layer_activations):  # Displays the feature maps
+        out_of_range_count = 0
         if 'batch_normalization' not in layer_name and layer_name not in layer_names[-3:-1]:
             continue
 
@@ -307,8 +349,11 @@ def show_layer_activations(model_orig, model_features, ds):
 
                 channel_image *= 64
                 channel_image += 128
+                min_, max_ = np.min(channel_image), np.max(channel_image)
+                if min_ < 0.0 or max_ > 255:
+                    out_of_range_count += 1
                 channel_image = np.clip(channel_image, 0, 255).astype('uint8')
-                display_grid[col * size: (col + 1) * size,  # Displays the grid
+                display_grid[col * size: (col + 1) * size,
                              row * size: (row + 1) * size] = channel_image
 
         scale = 1. / size
@@ -318,30 +363,28 @@ def show_layer_activations(model_orig, model_features, ds):
         plt.grid(False)
         plt.imshow(display_grid, aspect='auto', cmap='viridis', vmin=0, vmax=255)
         plt.show()
+        print(f'{out_of_range_count=}')
 
 
 def heatmaps_all(model, class_names, name, val=True):
-    folder = 'sirky' + '_validation' * val
-    labels = load_labels(folder + os.sep + 'labels.csv', use_full_path=False)
-    # if not val:
-    #     labels = labels[-7:-5]
-
-    # file = list(labels.keys())[3]
-
-    for file in list(labels):  # [-7:-5] for train_ds
+    folder = 'sirky' + '_val' * val
+    labels = load_labels(folder + os.sep + 'labels.csv', use_full_path=False, keep_bg=False)
+    for file in list(labels):
         predict_full_image(model, class_names,
                            labels,
                            img_path=folder + os.sep + file,
-                           heatmap_alpha=0.6,
-                           output_location='heatmaps_before_manual' + name,
+                           output_location='heatmaps' + name,
                            # output_location=None,
-                           show_figure=True)
+                           show_figure=True,
+                           # undecided_only=True,
+                           # maxes_only=True,
+                           )
 
 
-def full_img_loss(prediction, img_path, labels, class_names):
-    """full prediction loss function
-    todo keep scale in mind
-    todo img = img[15:-16, 15:-16] NOT HANDLED YET - loss calculation inaccuracy
+def full_img_pred_error(prediction, img_path, img, labels, class_names):
+    """full prediction metric
+
+    todo work with prediction probability instead of argmax?
 
     non-background: nejbližší keypoint dané třídy -> dist == loss
 
@@ -361,7 +404,7 @@ def full_img_loss(prediction, img_path, labels, class_names):
         for cat, l in labels.items():
             new_l = []
             for item in l:
-                new_l.append(((int(item[0]) // 2 - 504), (int(item[1]) // 2 - 378)))
+                new_l.append(((int(item[0]) // 2 - 504 - 15), (int(item[1]) // 2 - 378 - 15)))
             new[cat] = new_l
 
         return new
@@ -378,11 +421,6 @@ def full_img_loss(prediction, img_path, labels, class_names):
 
     # make prediction one-hot over channels
     p_argmax = np.argmax(prediction, axis=2)
-
-    # per_pixel_loss = []
-    # for x in range(prediction.shape[0]):
-    #     for y in range(prediction.shape[1]):
-    #         per_pixel_loss.append(pixel_loss(prediction[x, y], np.array([x, y])))
 
     # grid for calculating distances
     xxyy = np.meshgrid(np.arange(img.shape[1]), np.arange(img.shape[0]))
@@ -416,16 +454,4 @@ def full_img_loss(prediction, img_path, labels, class_names):
 
     loss_sum = np.sum(category_losses)
     return loss_sum
-
-
-"""
-for file, cats in labels.items():
-    new[file] = dict()
-    for cat, l in cats.items():
-        new_l = []
-        for item in l:
-            new_l.append(((item[0] // 2 - 504), (item[1] // 2 - 378)))
-            
-        new[file][cat] = new_l
-"""
 

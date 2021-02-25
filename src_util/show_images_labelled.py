@@ -59,7 +59,7 @@ if __name__ == '__main__':
     # labels = load_labels(input_folder + os.sep + labels_file, use_full_path=False)
 
     # B) show keypoints and sampled background positions
-    labels = load_labels('labels_with_bg.csv', use_full_path=False)
+    labels = load_labels('image_regions_32_050' + os.sep + 'labels_with_bg.csv', use_full_path=False)
 
     if show_images:
         cv.namedWindow(window_name, cv.WINDOW_GUI_NORMAL)

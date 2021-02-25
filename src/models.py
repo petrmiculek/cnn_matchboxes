@@ -1,8 +1,10 @@
 import tensorflow as tf
-from tensorflow.keras.layers import *  # add, Conv2D, BatchNormalization, Softmax, experimental, Input, MaxPool2D
+from tensorflow.keras.layers import \
+    add, Conv2D, BatchNormalization, Softmax, experimental, Input, MaxPool2D, Cropping2D
 import numpy as np
 from math import log2, ceil
 import util
+from src_util.general import safestr
 
 
 def dilated_experiment_1(num_classes, name_suffix=''):
@@ -38,8 +40,6 @@ def fcn_residual_1(num_classes, name_suffix=''):
     width = 128
 
     input_layer = Input(shape=(None, None, 3))
-    # x = experimental.preprocessing.Rescaling(1. / 255)(input_layer)  # todo test again with rescaling
-
     x = BatchNormalization()(input_layer)
     x = Conv2D(width, 3, **conv_args)(x)  # Makes width wide enough for addition inside skip module
 
@@ -48,21 +48,17 @@ def fcn_residual_1(num_classes, name_suffix=''):
         x = BatchNormalization()(x)
         y = Cropping2D(cropping=((2, 2), (2, 2)))(x)
 
-        x = Conv2D(width,
-                   3,
-                   **conv_args)(x)
+        x = Conv2D(width, 3, **conv_args)(x)
 
         x = BatchNormalization()(x)
 
-        x = Conv2D(width,
-                   3,
-                   )(x)
+        x = Conv2D(width, 3, )(x)  # todo bring back **conv_args
 
         if i % 2 == 0:
             x = MaxPool2D(pool_size=(2, 2), strides=(1, 1), padding='same')(x)
 
         x = add([x, y])
-        # x = Conv2D(width, 1, **conv_args)(x)  # 1x1
+        # x = Conv2D(width, 1, **conv_args)(x)  # 1x1  # todo try
 
     x = BatchNormalization()(x)
     x = Conv2D(16 * 1 << coef, 2, **conv_args)(x)  # fit-once
@@ -143,7 +139,7 @@ def fcn_maxpool_div(num_classes, weight_init_idx=0):
     layers = len(width)
     name = 'FCN_layers{}_channels{}_init{}'.format(layers, width * channels_base, weight_init_idx)
 
-    model = tf.keras.Sequential(name=util.safestr(name))
+    model = tf.keras.Sequential(name=safestr(name))
     model.add(tf.keras.Input(shape=(None, None, 3)))
     model.add(experimental.preprocessing.Rescaling(1. / 255))
 

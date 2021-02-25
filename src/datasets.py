@@ -27,9 +27,9 @@ def get_dataset(data_dir):
     def decode_img(img):
         # convert the compressed string to a 3D uint8 tensor
         img = tf.image.decode_jpeg(img, channels=3)
-        # resize the image to the desired size
-        return tf.image.resize(img, [img_height, img_width])
-        # return img
+
+        # return tf.image.resize(img, [img_height, img_width])
+        return img
 
     def process_path(file_path):
         label = get_label(file_path)
@@ -46,7 +46,6 @@ def get_dataset(data_dir):
         return ds
 
     batch_size = 32
-    img_height, img_width = 32, 32
 
     dataset = tf.data.Dataset.list_files(os.path.join(data_dir, '*/*.jpg'), shuffle=False)
     image_count = len(list(dataset))  # total (train + validation)
@@ -55,10 +54,10 @@ def get_dataset(data_dir):
 
     """Compile a `class_names` list from the tree structure of the files."""
     data_dir_path = pathlib.Path(data_dir)
-    class_names = np.array(sorted([item.name for item in data_dir_path.glob('*')]))
+    class_names = np.array(sorted([item.name for item in data_dir_path.glob('*') if os.path.isdir(item)]))
     num_classes = len(class_names)  # total (train + validation)
 
-    """Split train and validation:"""
+    """Split training and validation"""
     # val_size = int(image_count * 0.2)
     # train_ds = dataset.skip(val_size)
     # val_ds = dataset.take(val_size)

@@ -5,8 +5,8 @@ from collections import defaultdict
 img_dims = dict()
 
 
-def load_labels(path, use_full_path=True):
-    """
+def load_labels(path, use_full_path=True, keep_bg=True):
+    """Load annotated points
 
 
     :param path: path to labels file
@@ -29,6 +29,9 @@ def load_labels(path, use_full_path=True):
 
             if use_full_path:
                 img_name = path + os.sep + img_name
+
+            if label_name == 'background' and not keep_bg:
+                continue
 
             img = labels[img_name]
             img[label_name].append((x, y))

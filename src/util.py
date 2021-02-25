@@ -1,5 +1,10 @@
 import tensorflow as tf
 
+"""
+Model-related utility code
+(as opposed to non-model-related utility code in src_util)
+"""
+
 
 class Accu(tf.metrics.SparseCategoricalAccuracy):
     def update_state(self, y_true, y_pred, sample_weight=None):
@@ -30,11 +35,3 @@ def lr_scheduler(epoch, lr, start=10, decay=-0.10):
         return lr * tf.math.exp(decay)
 
 
-def safestr(*args):
-    """Turn string into a filename
-    https://stackoverflow.com/questions/7406102/create-sane-safe-filename-from-any-unsafe-string
-    :return: sanitized filename-safe string
-    """
-    string = str(args)
-    keepcharacters = (' ', '.', '_')
-    return "".join(c for c in string if c.isalnum() or c in keepcharacters).rstrip().replace(' ', '_')

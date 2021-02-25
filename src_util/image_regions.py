@@ -1,34 +1,43 @@
-import cv2 as cv
-import numpy as np
 import csv
-from collections import defaultdict
 import pathlib
 import os
-from labels import load_labels, img_dims
 import random
-from math import sqrt
 
+import cv2 as cv
+import numpy as np
 import pandas as pd
 
-# global parameters
-region_side = 32
-scale = 0.50
-input_folder = 'sirky'  # _validation
-labels_file = 'labels.csv'
-output_folder = 'image_regions_{}_{:03d}'.format(region_side, int(scale * 100))  # _val
-bg_csv_file = 'background'  # _val
-merged_labels_bg_csv = 'labels_with_bg'  # _val
+from math import sqrt
+from collections import defaultdict
+from scipy.spatial.distance import cdist
+
+from labels import load_labels, img_dims
+
+"""
+Dataset prep:
+
+padding x radius for background
+
+todo cdist instead of euclid_dist
+"""
 
 # swapping of generating keypoint/background cutouts
 do_foreground = True
 do_background = True
-
 val = False
-if val:
-    input_folder += '_validation'
-    output_folder += '_val'
-    bg_csv_file += '_val'
-    merged_labels_bg_csv += '_val'
+
+# global parameters
+region_side = 64
+scale = 0.50
+
+params_suffix = '_{}_{:03d}'.format(region_side, int(scale * 100))
+
+input_folder = 'sirky' + '_val' * val
+output_folder = 'image_regions' + params_suffix + '_val' * val
+
+labels_file = input_folder + os.sep + 'labels.csv'
+bg_csv_file = output_folder + os.sep + 'background' + '_val' * val + '.csv'
+merged_labels_bg_csv = output_folder + os.sep + 'labels_with_bg' + '_val' * val + '.csv'
 
 radius = region_side // 2
 random.seed(1234)
@@ -96,7 +105,7 @@ if __name__ == '__main__':
     if not os.path.isdir(output_folder):
         os.makedirs(output_folder, exist_ok=True)
 
-    labels = load_labels(input_folder + os.sep + labels_file, use_full_path=False)
+    labels = load_labels(labels_file, use_full_path=False)
     # mean_label_per_category_count = np.mean([len(labels[file]) for file in labels])
     # there are 1700 annotations in ~50 images => 35 keypoints per image
     # can do 100 background points per image
@@ -111,8 +120,10 @@ if __name__ == '__main__':
         if do_foreground:
             # generating regions from labels = keypoints
             for category in labels[file]:  # dict of categories
-                if not os.path.isdir(output_folder + os.sep + category):
-                    os.makedirs(output_folder + os.sep + category, exist_ok=True)
+                category_folder = output_folder + os.sep + category
+
+                if not os.path.isdir(category_folder):
+                    os.makedirs(category_folder, exist_ok=True)
 
                 for label_pos in labels[file][category]:  # list of labels
                     label_pos_scaled = int(int(label_pos[1]) * scale), int(int(label_pos[0]) * scale)
@@ -123,10 +134,9 @@ if __name__ == '__main__':
                     region = cut_out_around_point(img, label_pos_scaled)
 
                     # save image
-                    region_path = output_folder + os.sep + category + os.sep  # per category folder
                     region_filename = file.split('.')[0] + '_(' + str(label_pos[0]) + ',' + str(label_pos[1]) + ').jpg'
 
-                    tmp = cv.imwrite(region_path + region_filename, region)
+                    tmp = cv.imwrite(category_folder + os.sep + region_filename, region)
 
         if do_background:
             # generating regions from the background
@@ -135,20 +145,25 @@ if __name__ == '__main__':
                 os.makedirs(output_folder + os.sep + category, exist_ok=True)
 
             padding = img.shape[0] // 3
-            cutout_padding = padding  # radius -> full image, padding -> center
 
-            repeated = 0
+            # more params
+            cutout_padding = radius  # radius -> full image, padding -> center
+            shift_top = 0  # 500
+            bg_samples = 100
+            # ====
+
+            repeated = 0  # counter
             # save background positions to a csv file (same structure as keypoints)
-            with open(bg_csv_file + '.csv', 'a') as csvfile:
+            with open(bg_csv_file, 'a') as csvfile:
                 out_csv = csv.writer(csvfile, delimiter=',', quoting=csv.QUOTE_MINIMAL)
 
-                for i in range(100):  # how many background samples from image
+                for i in range(bg_samples):  # how many background samples from image
                     pos = (0, 0)
                     repeat = True
                     while repeat:
                         repeat = False
                         # generate position (region-center)
-                        pos = int(random.randint(cutout_padding - 500, img.shape[0] - cutout_padding)), \
+                        pos = int(random.randint(cutout_padding - shift_top, img.shape[0] - cutout_padding)), \
                               int(random.randint(cutout_padding, img.shape[1] - cutout_padding))
 
                         # test that position is not too close to an existing label
@@ -174,10 +189,10 @@ if __name__ == '__main__':
 
     if do_background:
         # Merge keypoints + background csv for cutout positions visualization
-        labels_csv = pd.read_csv(input_folder + os.sep + labels_file, header=None)
-        bg_csv = pd.read_csv(bg_csv_file + '.csv', header=None)
+        labels_csv = pd.read_csv(labels_file, header=None)
+        bg_csv = pd.read_csv(bg_csv_file, header=None)
         merged = pd.concat([labels_csv, bg_csv], ignore_index=True)
 
-        merged.to_csv(merged_labels_bg_csv + '.csv', header=False, index=False, encoding='utf-8')
+        merged.to_csv(merged_labels_bg_csv, header=False, index=False, encoding='utf-8')
 
 # todo warning - manually created background labels won't be in background.csv
