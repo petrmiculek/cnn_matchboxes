@@ -1,6 +1,8 @@
 import tensorflow as tf
 from tensorflow.keras.layers import \
-    add, Conv2D, BatchNormalization, Softmax, experimental, Input, MaxPool2D, Cropping2D
+    add, Conv2D, BatchNormalization, Softmax, Input, MaxPool2D, Cropping2D
+from tensorflow.keras.layers.experimental.preprocessing import \
+    CenterCrop, RandomFlip, RandomRotation
 import numpy as np
 from math import log2, ceil
 import util
@@ -52,13 +54,13 @@ def fcn_residual_1(num_classes, name_suffix=''):
 
         x = BatchNormalization()(x)
 
-        x = Conv2D(width, 3, )(x)  # todo bring back **conv_args
+        x = Conv2D(width, 3, )(x)  # todo try again with **conv_args
 
-        if i % 2 == 0:
-            x = MaxPool2D(pool_size=(2, 2), strides=(1, 1), padding='same')(x)
+        # if i % 2 == 0:  # todo try again
+        #     x = MaxPool2D(pool_size=(2, 2), strides=(1, 1), padding='same')(x)
 
         x = add([x, y])
-        # x = Conv2D(width, 1, **conv_args)(x)  # 1x1  # todo try
+        # x = Conv2D(width, 1, **conv_args)(x)  # 1x1  # todo try again
 
     x = BatchNormalization()(x)
     x = Conv2D(16 * 1 << coef, 2, **conv_args)(x)  # fit-once

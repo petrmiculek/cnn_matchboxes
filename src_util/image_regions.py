@@ -169,7 +169,7 @@ if __name__ == '__main__':
                         # test that position is not too close to an existing label
                         for label_pos in file_labels:
                             # both file_labels positions and pos are already properly scaled
-                            if euclid_dist(pos, label_pos) < 5:  # or use: region_side // 4
+                            if euclid_dist(pos, label_pos) < region_side // 4:  # or use: region_side // 4
                                 repeated += 1
                                 repeat = True
 

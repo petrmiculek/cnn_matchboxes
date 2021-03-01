@@ -11,6 +11,7 @@ import cv2 as cv
 from math import ceil
 from scipy.spatial.distance import cdist
 from src_util.labels import load_labels
+from math import log10, sqrt, floor
 
 
 def confusion_matrix(model, class_names, epochs_trained, labels,
@@ -45,7 +46,7 @@ def confusion_matrix(model, class_names, epochs_trained, labels,
 
 
 def misclassified_regions(imgs, labels, class_names, predictions,
-                          false_pred, misclassified_folder, show_figure):
+                          false_pred, misclassified_folder=None, show_figure=True):
     """Show misclassified regions
 
     figures=images are saved when the misclassified_folder argument is given
@@ -133,8 +134,6 @@ def visualize_results(model, dataset, class_names, epochs_trained,
     undecided = len(maxes[maxes <= 0.125])
     # undecided_idx = np.argwhere(maxes <= 0.125)
 
-    # print(labels.shape, predictions.shape)  # debug
-
     print('Accuracy: {0:0.2g}%'.format(100.0 * (1 - len(false_predictions) / len(predictions))))
     print('Prediction types:\n',
           '\tConfident: {}\n'.format(confident),
@@ -166,9 +165,7 @@ def get_image_as_batch(img_path, scale=1.0, center_crop_fraction=0.5):
     low = (1 - center_crop_fraction) / 2
     high = (1 + center_crop_fraction) / 2
 
-    img = img[h * int(low): h * int(high), w * int(low): w*int(high), :]  # cut out half-sized from center
-    # img = img[h // 4: 3 * h // 4, w // 4: 3 * w // 4, :]  # cut out half-sized from center
-    # img = img[h // 3: 2 * h // 3, w // 3: 2 * w // 3, :]  # cut out third-sized from center
+    img = img[int(h * low): int(h * high), int(w * low): int(w * high), :]  # cut out from center
 
     img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
     img = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))  # reversed indices, OK
@@ -241,37 +238,40 @@ def predict_full_image(model, class_names, labels, img_path, output_location,
     # Model prediction is "cropped", adjust image accordingly
     img = img[15:-16, 15:-16]  # warning, depends on model cutout size (only works for 32x)
 
+    category_titles = class_names
+
     if undecided_only:
         plots_title = 'undecided'
     elif maxes_only:
         plots_title = 'maxes'
     else:
-        img_loss = full_img_pred_error(predictions, img_path, img, labels, class_names)
-        plots_title = str(img_loss // 1e6) + 'M'
+        category_losses, losses_sum = full_img_pred_error(predictions, img_path, img, labels, class_names)
+        category_titles = category_losses
+        plots_title = str(losses_sum // 1e6) + 'M'  # worked with total loss sum
 
-    display_predictions(predictions, img, img_path, class_names, model, plots_title,
+    display_predictions(predictions, img, img_path, category_titles, model, plots_title,
                         heatmap_alpha, show_figure, output_location)
 
 
 def display_predictions(predictions, img, img_path, class_names, model, title='',
-                        heatmap_alpha=0.6, show_figure=True, output_location=None):
-
-    # Turn predictions into heatmaps superimposed on input image
+                        heatmap_alpha=0.6, show_figure=True, output_location=None, superimpose=False):
+    # Plot predictions as heatmaps superimposed on input image
     predictions = np.uint8(255 * predictions)
     class_activations = []
 
     for i in range(0, len(class_names)):
         pred = np.stack((predictions[:, :, i],) * 3, axis=-1)
         pred = cv.applyColorMap(pred, cv.COLORMAP_VIRIDIS)
-        pred = cv.cvtColor(pred, cv.COLOR_BGR2RGB)
-        pred = cv.addWeighted(pred, heatmap_alpha, img, 1 - heatmap_alpha, gamma=0)
+        if superimpose:
+            pred = cv.cvtColor(pred, cv.COLOR_BGR2RGB)
+            pred = cv.addWeighted(pred, heatmap_alpha, img, 1 - heatmap_alpha, gamma=0)
         class_activations.append(pred)
 
     class_activations.append(img)
     subplot_titles = np.append(class_names, 'full-image')
 
     # Plot heatmaps
-    fig, axes = plt.subplots(nrows=3, ncols=3, figsize=(10, 10), )
+    fig, axes = plt.subplots(nrows=3, ncols=3, figsize=(16, 14), )  # todo higher figure size
     fig.suptitle('Heatmaps\n{}'.format(title))
     fig.subplots_adjust(right=0.85, left=0.05)
     for i in range(9):
@@ -295,47 +295,71 @@ def display_predictions(predictions, img, img_path, class_names, model, title=''
     plt.close(fig)
 
 
-def show_layer_activations(model_orig, model_features, ds, class_names):
+def show_layer_activations(model, data_augmentation, ds, class_names, show_figure=True, save_output=False):
     """Predict single cutout and show network's layer activations
 
     Adapted from:
     https://towardsdatascience.com/feature-visualization-on-convolutional-neural-networks-keras-5561a116d1af
 
-    todo broken as of introducing the crop
+    todo broken as of introducing the crop layer
 
-    :param model_orig:
-    :param model_features:
+    :param save_output:
+    :param show_figure:
+    :param data_augmentation:
+    :param model:
     :param ds:
     :param class_names:
     :return:
     """
+
+    folder = model.name + '_layer_activations' + os.sep
+    if save_output:
+        d = os.path.dirname(folder)
+        if d and not os.path.isdir(d):
+            os.makedirs(d)
+
     batch, labels = list(ds)[0]  # first batch
     batch_img0 = tf.convert_to_tensor(batch[0:1])  # first image (made to a 1-element batch)
 
-    plt.imshow(batch_img0[0].numpy().astype('uint8'), aspect='auto', cmap='viridis', vmin=0, vmax=255)
-    plt.show()
+    plt.imshow(batch_img0[0].numpy().astype('uint8'), cmap='viridis', vmin=0, vmax=255)  # aspect='auto',
+    if save_output:
+        plt.savefig(folder + 'input')
 
-    print('GT label =', class_names[int(labels[0].numpy())])
-    all_layer_activations = model_features(batch_img0, training=False)
-    print('pred     =', all_layer_activations[-1].numpy().shape)
+    if show_figure:
+        plt.show()
+
+    layers = [layer.output for layer in model.layers]
+    model_all_outputs = tf.keras.Model(inputs=model.input, outputs=layers)
+
+    # no augmentation, only crop
+    batch_img0 = data_augmentation(batch_img0, training=False)
+
+    print('GT   =', class_names[int(labels[0].numpy())])
+    all_layer_activations = model_all_outputs(batch_img0, training=False)
+    pred = all_layer_activations[-1].numpy()
+    print('pred =', pred.shape, class_names[np.argmax(pred)])
 
     layer_names = []
-
-    for layer in model_orig.layers[1].layers[:]:
-        layer_names.append(layer.name)
+    for i, layer in enumerate(model.layers):
+        layer_names.append(str(i) + '_' + layer.name)
 
     images_per_row = 16
 
-    for layer_name, layer_activation in zip(layer_names, all_layer_activations):  # Displays the feature maps
+    for layer_name, layer_activation in zip(layer_names, all_layer_activations):
+
         out_of_range_count = 0
-        if 'batch_normalization' not in layer_name and layer_name not in layer_names[-3:-1]:
-            continue
+        total_count = 0
+
+        # if 'batch_normalization' not in layer_name and layer_name not in layer_names[-3:-1]:
+        #     continue
 
         n_features = layer_activation.shape[-1]  # Number of features in the feature map
         size = layer_activation.shape[1]  # The feature map has shape (1, size, size, n_features).
-        if size == 1:  # caused top == bottom range problems
-            print(f'{layer_name} {n_features=}')
-            continue
+
+        # if size == 1:  # caused top == bottom range problems
+        #     print(f'{layer_name} {n_features=}')
+        #     continue
+
         n_cols = ceil(n_features / images_per_row)  # Tiles the activation channels in this matrix
         display_grid = np.zeros((size * n_cols, images_per_row * size))
 
@@ -349,9 +373,13 @@ def show_layer_activations(model_orig, model_features, ds, class_names):
 
                 channel_image *= 64
                 channel_image += 128
+
+                # how often do we clip
                 min_, max_ = np.min(channel_image), np.max(channel_image)
-                if min_ < 0.0 or max_ > 255:
+                if min_ < 0.0 or max_ > 255.0:
                     out_of_range_count += 1
+                total_count += 1
+
                 channel_image = np.clip(channel_image, 0, 255).astype('uint8')
                 display_grid[col * size: (col + 1) * size,
                              row * size: (row + 1) * size] = channel_image
@@ -362,22 +390,28 @@ def show_layer_activations(model_orig, model_features, ds, class_names):
         plt.title(layer_name)
         plt.grid(False)
         plt.imshow(display_grid, aspect='auto', cmap='viridis', vmin=0, vmax=255)
-        plt.show()
-        print(f'{out_of_range_count=}')
+
+        if save_output:
+            plt.savefig(folder + layer_name)
+
+        if show_figure:
+            plt.show()
+
+        print(f'{layer_name}: {out_of_range_count=} / {total_count}')
 
 
-def heatmaps_all(model, class_names, name, val=True):
+def heatmaps_all(model, class_names, name, val=True, undecided_only=False, maxes_only=False, output_location=None):
     folder = 'sirky' + '_val' * val
     labels = load_labels(folder + os.sep + 'labels.csv', use_full_path=False, keep_bg=False)
     for file in list(labels):
         predict_full_image(model, class_names,
                            labels,
                            img_path=folder + os.sep + file,
-                           output_location='heatmaps' + name,
-                           # output_location=None,
+                           # output_location='heatmaps' + name,
+                           output_location=output_location,
                            show_figure=True,
-                           # undecided_only=True,
-                           # maxes_only=True,
+                           undecided_only=undecided_only,
+                           maxes_only=maxes_only,
                            )
 
 
@@ -400,6 +434,7 @@ def full_img_pred_error(prediction, img_path, img, labels, class_names):
     no_such_cat_penalty = 50.0
 
     def rescale_file_labels(labels):
+        # todo test function with scaled down image
         new = dict()
         for cat, l in labels.items():
             new_l = []
@@ -410,7 +445,8 @@ def full_img_pred_error(prediction, img_path, img, labels, class_names):
         return new
 
     # filter only labels for given image
-    file_labels = [val for filename, val in labels.items() if filename in img_path]  # key in img_name, because img_name contains full path
+    file_labels = [val for filename, val in labels.items() if
+                   filename in img_path]  # key in img_name, because img_name contains full path
 
     if len(file_labels) != 1:
         return float('NaN')
@@ -423,35 +459,89 @@ def full_img_pred_error(prediction, img_path, img, labels, class_names):
     p_argmax = np.argmax(prediction, axis=2)
 
     # grid for calculating distances
-    xxyy = np.meshgrid(np.arange(img.shape[1]), np.arange(img.shape[0]))
-    xy = np.reshape(xxyy, (img.shape[0], img.shape[1], 2))
+    grid_indices = np.meshgrid(np.arange(img.shape[1]), np.arange(img.shape[0]))
+    grid_indices = np.reshape(grid_indices, (img.shape[0], img.shape[1], 2))
 
-    # keypoint categories
-    category_losses = []
-    for i, c_name in enumerate(class_names[1:]):
-
-        # filter predictions of given category
-        cat_idx = xy[p_argmax == i]
-
-        if c_name not in file_labels:  # no GT labels of this category
-            if len(cat_idx) > 0:  # predicted non-present category
-                category_losses.append(len(cat_idx) * no_such_cat_penalty)
-            continue
-
-        # distance of each predicted point to each GT label
-        per_pixel_distances = cdist(cat_idx, np.array(file_labels[c_name]))
-        per_pixel_loss = np.min(per_pixel_distances, axis=1)
-        print(np.mean(per_pixel_loss))
-
-        category_losses.append(np.sum(per_pixel_loss))
+    category_losses = {}
 
     # background
-    cat_idx = xy[p_argmax == 0]
+    cat_idx = grid_indices[p_argmax == 0]
     per_pixel_distances = cdist(cat_idx, np.array(file_labels_merged))
     per_pixel_loss = np.min(per_pixel_distances, axis=1)
     penalized = per_pixel_loss[per_pixel_loss < min_dist_background]
-    category_losses.append(min_dist_background_penalty * len(penalized))
+    category_losses['background'] = min_dist_background_penalty * len(penalized)
 
-    loss_sum = np.sum(category_losses)
-    return loss_sum
+    # keypoint categories
+    for i, cat in enumerate(class_names[1:]):  # skip 0 == background
 
+        # filter predictions of given category
+        cat_idx = grid_indices[p_argmax == i]
+
+        if cat not in file_labels:  # no GT labels of this category
+            # predicted non-present category
+            category_losses[cat] = len(cat_idx) * no_such_cat_penalty
+            print(cat, category_losses[cat])
+            continue
+
+        # distance of each predicted point to each GT label
+        per_pixel_distances = cdist(cat_idx, np.array(file_labels[cat]))
+        per_pixel_loss = np.min(per_pixel_distances, axis=1)
+        print(np.mean(per_pixel_loss))
+
+        category_losses[cat] = np.sum(per_pixel_loss)
+
+    loss_sum = np.sum(list(category_losses.values()))
+    # print(img_path, loss_sum)  # todo debugging
+
+    return [str(cat) + ': 1e{0:0.2g}'.format(log10(loss + 1)) for cat, loss in category_losses.items()], \
+           loss_sum
+
+
+def show_augmentation(data_augmentation, dataset):
+    """Show grid of augmentation results
+
+    :param data_augmentation:
+    :param dataset:
+    :return:
+    """
+
+    """Convert dataset"""
+    imgs = [img
+            for batch in list(dataset)
+            for img in batch[0]]
+
+    # replaced by comprehension above
+    # for batch in list(dataset):
+    #     imgs.append(batch[0].numpy())
+
+    imgs = np.vstack([imgs])  # -> 4D [img_count x width x height x channels]
+
+    """Make predictions"""
+    pred = data_augmentation(tf.convert_to_tensor(imgs, dtype=tf.uint8), training=True)
+
+    half_dim = imgs.shape[2] // 2
+
+    # Center-crop regions (64x to 32x)
+    imgs = imgs[:, half_dim - 16: half_dim + 16, half_dim - 16: half_dim + 16, :]
+
+    # alternatively, resize to 1/2 inside the loop below, once merged (B, W, H, C) -> (B*W, H, C)
+    # imgs_col = cv.resize(imgs_col, None, fx=0.5, fy=0.5)
+
+    """Show predictions as a grid"""
+    rows = floor(sqrt(len(imgs)))  # Note: does not use all images
+    cols = []
+
+    for i in range(len(imgs) // rows):
+        imgs_col = np.vstack(imgs[rows * i:(i + 1) * rows])
+        pred_col = np.vstack(pred[rows * i:(i + 1) * rows])
+        col = np.hstack((imgs_col, pred_col))
+        cols.append(col)
+
+    grid_img = np.hstack(cols)
+
+    pi = PIL.Image.fromarray(grid_img.astype('uint8'))
+    pi.show()
+
+    # figure makes images too small
+    # fig = plt.imshow(grid_img.astype("uint8"))
+    # fig.axes.figure.show()

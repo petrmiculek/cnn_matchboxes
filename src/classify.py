@@ -28,6 +28,23 @@ from src_util.general import safestr
 from IPython.display import Image, display
 import matplotlib.cm as cm
 
+
+def get_model(model_factory, num_classes, model_name):
+    base_model = model_factory(num_classes, name_suffix=model_name)
+    base_model.summary()
+    tf.keras.utils.plot_model(base_model, base_model.name + "_architecture_graph.png", show_shapes=True)
+
+    data_augmentation = tf.keras.Sequential([
+        tf.keras.layers.Input(shape=(64, 64, 3)),
+        RandomFlip("horizontal"),
+        RandomRotation(1/8, fill_mode='reflect'),
+        CenterCrop(32, 32),
+    ])
+
+    model = tf.keras.Sequential([data_augmentation, base_model, ], name='aug' + base_model.name)
+    return base_model, model, data_augmentation
+
+
 if __name__ == '__main__':
     print(f'{tf.__version__=}')
 
@@ -57,23 +74,8 @@ if __name__ == '__main__':
     tensorboard_callback = tf.keras.callbacks.TensorBoard(logdir, histogram_freq=1, profile_batch='300,400')
 
     """ Create/Load a model """
-    augment = True
-
-    name = safestr('aug-{}_{}'.format(augment, time))
-    base_model = models.fcn_residual_1(num_classes, name_suffix=name)
-    base_model.summary()
-    tf.keras.utils.plot_model(base_model, base_model.name + "_architecture_graph.png", show_shapes=True)
-
-    if augment:
-        data_augmentation = tf.keras.Sequential([
-            RandomFlip("horizontal"),
-            RandomRotation(0.2, fill_mode='reflect'),
-            CenterCrop(32, 32)
-        ])
-
-        model = tf.keras.Sequential([data_augmentation, base_model, ], name='aug' + base_model.name)
-    else:
-        model = base_model
+    name = safestr('{}'.format(time))
+    base_model, model, data_augmentation = get_model(models.fcn_residual_1, num_classes, name)
 
     scce_loss = tf.losses.SparseCategoricalCrossentropy(from_logits=False)
     accu = util.Accu(name='accu_custom')  # ~= SparseCategoricalAccuracy
@@ -91,7 +93,7 @@ if __name__ == '__main__':
                  # tf.keras.metrics.SparseCategoricalCrossentropy(from_logits=False, name='f'),
                  ])
 
-    epochs = 1
+    epochs = 50
 
     history = model.fit(
         train_ds,
@@ -109,28 +111,25 @@ if __name__ == '__main__':
     )
     epochs_trained += epochs
 
-    base_model.load_weights('models_saved/tff_w128_l18augTrue_20210224183906')
+    # base_model.load_weights('models_saved/tff_w128_l18augTrue_20210224183906')
+    base_model.load_weights('models_saved/non_maxpoolaugTrue_20210228212535')
 
-    # model.save_weights('models_saved' + os.sep + name)  # todo fix
+    # model.save_weights('models_saved' + os.sep + 'non_maxpool' + name)  # todo fix
 
     """Evaluate model"""
 
-    # output_location = None
+    output_location = None
 
     visualize_results(model, val_ds, class_names, epochs_trained, output_location, show_figure=True, show_misclassified=False)
     visualize_results(model, train_ds, class_names, epochs_trained, output_location, show_figure=True)
 
-    """Predict full image"""
-    heatmaps_all(base_model, class_names, name, val=True)
-    heatmaps_all(base_model, class_names, name, val=False)
+    """Full image prediction"""
+    heatmaps_all(base_model, class_names, name, val=True, maxes_only=True)
+    heatmaps_all(base_model, class_names, name, val=False, maxes_only=True)
 
-    """
-    # Per layer activations
-    layers_intermediate_ = [layer.output for layer in crop_model.layers[2].layers]
-    feat_extraction_model = tf.keras.Model(inputs=crop_model.input, outputs=layers_intermediate_)
+    """Per layer activations"""
+    show_layer_activations(base_model, data_augmentation, val_ds, class_names, show_figure=False, save_output=True)
 
-    show_layer_activations(crop_model, feat_extraction_model, val_ds, class_names)
-    """
 """dump"""
 # from google.colab import drive
 # drive.mount('/content/drive')
@@ -143,5 +142,5 @@ if __name__ == '__main__':
 tu sluka steskne v rákosí blíž kraje
 a kachna vodní s peřím zelenavým
 jak duhovými barvami když hraje
-se nese v dálce prachem slunce žhavý
+se nese v dálce prachem slunce žhavým
 """
