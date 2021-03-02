@@ -73,17 +73,16 @@ def fcn_residual_1(num_classes, name_suffix=''):
 
     x = Softmax()(x)
 
-    model = tf.keras.Model(inputs=input_layer, outputs=x, name='tff_w{}_l{}'.format(width, 18) + name_suffix)
+    model = tf.keras.Model(inputs=input_layer, outputs=x, name='residual_' + name_suffix)
     return model
 
 
-def fcn_sequential(num_classes, name_suffix='', weight_init_idx=0):
+def fcn_sequential(num_classes, name_suffix=''):
     """
     January 25
 
     :param num_classes:
     :param name_suffix:
-    :param weight_init_idx:
     :return:
     """
     conv_args = {'activation': 'relu',

@@ -1,5 +1,4 @@
 import tensorflow as tf
-
 """
 Model-related utility code
 (as opposed to non-model-related utility code in src_util)

@@ -6,8 +6,8 @@ https://colab.research.google.com/drive/1F28FEGGLmy8-jW9IaOo60InR9VQtPbmG
 """
 import os
 import sys
-
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 import tensorflow as tf
 from tensorflow.keras.layers.experimental.preprocessing import RandomFlip, RandomRotation, CenterCrop
 import datetime
@@ -29,58 +29,50 @@ from IPython.display import Image, display
 import matplotlib.cm as cm
 
 
-def get_model(model_factory, num_classes, model_name):
-    base_model = model_factory(num_classes, name_suffix=model_name)
+def get_model(model_factory, num_classes, name_suffix=''):
+    base_model = model_factory(num_classes, name_suffix=name_suffix)
     base_model.summary()
-    tf.keras.utils.plot_model(base_model, base_model.name + "_architecture_graph.png", show_shapes=True)
+    tf.keras.utils.plot_model(base_model, base_model.name + "_architecture.png", show_shapes=True)
 
     data_augmentation = tf.keras.Sequential([
         tf.keras.layers.Input(shape=(64, 64, 3)),
         RandomFlip("horizontal"),
         RandomRotation(1/8, fill_mode='reflect'),
         CenterCrop(32, 32),
-    ])
+    ], name='aug_only')
 
-    model = tf.keras.Sequential([data_augmentation, base_model, ], name='aug' + base_model.name)
+    model = tf.keras.Sequential([data_augmentation, base_model], name=base_model.name + '_full')
     return base_model, model, data_augmentation
 
 
 if __name__ == '__main__':
-    print(f'{tf.__version__=}')
 
+    data_dir = 'image_regions_64_050'
+
+    time = safestr(datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
+    logs_dir = os.path.join('logs', time)
+
+    print(f'{tf.__version__=}')
     if len(tf.config.list_physical_devices('GPU')) == 0:
         print('no available GPUs')
         sys.exit(0)
 
-    # save model weights, plotted imgs/charts
-    output_location = 'comparison'
-
     """ Load dataset """
-    data_dir = 'image_regions_64_050'
-
     train_ds, class_names, class_weights = get_dataset(data_dir)
     val_ds, _, _ = get_dataset(data_dir + '_val')
     num_classes = len(class_names)
 
-    """ Logging """
-    logs_folder = 'logs'
-
-    os.makedirs(logs_folder, exist_ok=True)
-
-    time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    logdir = os.path.join(logs_folder, time)
-    file_writer = tf.summary.create_file_writer(logdir + "/metrics")
-    file_writer.set_as_default()
-    tensorboard_callback = tf.keras.callbacks.TensorBoard(logdir, histogram_freq=1, profile_batch='300,400')
-
     """ Create/Load a model """
-    name = safestr('{}'.format(time))
-    base_model, model, data_augmentation = get_model(models.fcn_residual_1, num_classes, name)
-
+    base_model, model, data_augmentation = get_model(models.fcn_residual_1, num_classes, name_suffix=time)
     scce_loss = tf.losses.SparseCategoricalCrossentropy(from_logits=False)
     accu = util.Accu(name='accu_custom')  # ~= SparseCategoricalAccuracy
     lr_sched = tf.keras.callbacks.LearningRateScheduler(util.lr_scheduler)
 
+    """ Logging (unrelated to currdir) """
+    os.makedirs(logs_dir, exist_ok=True)
+    file_writer = tf.summary.create_file_writer(logs_dir + "/metrics")
+    file_writer.set_as_default()
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(logs_dir, histogram_freq=1, profile_batch='300,400')
     epochs_trained = 0
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 
@@ -112,23 +104,26 @@ if __name__ == '__main__':
     epochs_trained += epochs
 
     # base_model.load_weights('models_saved/tff_w128_l18augTrue_20210224183906')
-    base_model.load_weights('models_saved/non_maxpoolaugTrue_20210228212535')
+    # base_model.load_weights('models_saved/non_maxpoolaugTrue_20210228212535')
 
-    # model.save_weights('models_saved' + os.sep + 'non_maxpool' + name)  # todo fix
+    # model.save_weights(os.path.join('models_saved', model.name))
+
+    """ Model outputs dir """
+    output_location = os.path.join('outputs', model.name)
+    if not os.path.isdir(output_location):
+        os.makedirs(output_location, exist_ok=True)
 
     """Evaluate model"""
-
-    output_location = None
-
-    visualize_results(model, val_ds, class_names, epochs_trained, output_location, show_figure=True, show_misclassified=False)
-    visualize_results(model, train_ds, class_names, epochs_trained, output_location, show_figure=True)
+    # output_location = None  # do-not-save flag
+    visualize_results(model, val_ds, class_names, epochs_trained, output_location=output_location, show=True, show_misclassified=False, val=True)
+    visualize_results(model, train_ds, class_names, epochs_trained, output_location=output_location, show=True)
 
     """Full image prediction"""
-    heatmaps_all(base_model, class_names, name, val=True, maxes_only=True)
-    heatmaps_all(base_model, class_names, name, val=False, maxes_only=True)
+    heatmaps_all(base_model, class_names, val=True, output_location=output_location)
+    heatmaps_all(base_model, class_names, val=False, output_location=output_location, show=False)
 
     """Per layer activations"""
-    show_layer_activations(base_model, data_augmentation, val_ds, class_names, show_figure=False, save_output=True)
+    show_layer_activations(base_model, data_augmentation, val_ds, class_names, show=True, output_location=output_location)
 
 """dump"""
 # from google.colab import drive
