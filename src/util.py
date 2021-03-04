@@ -1,4 +1,5 @@
 import tensorflow as tf
+
 """
 Model-related utility code
 (as opposed to non-model-related utility code in src_util)
@@ -17,7 +18,7 @@ class Accu(tf.metrics.SparseCategoricalAccuracy):
         return super(Accu, self).update_state(y_avoid_free, y_pred_reshaped, sample_weight)
 
 
-def lr_scheduler(epoch, lr, start=10, decay=-0.10):
+def lr_scheduler(epoch, lr, start=10, end=150, decay=-0.10):
     """
 
     https://keras.io/api/callbacks/learning_rate_scheduler/
@@ -25,12 +26,55 @@ def lr_scheduler(epoch, lr, start=10, decay=-0.10):
     :param epoch:
     :param lr:
     :param start:
+    :param end:
     :param decay:
     :return:
     """
     if epoch < start:
         return lr
+    elif epoch > end:
+        return lr
     else:
         return lr * tf.math.exp(decay)
 
 
+def print_both(output_file_path):
+    f = open(output_file_path, 'w')  # where to close
+    print_orig = print
+
+    def print_inner(*args):
+        print_orig(*args)
+        print_orig(*args, file=f)
+
+    return print_inner
+
+
+class DuplicateStream(object):
+    """Make stream double-ended, outputting to stdout and a file
+
+    http://www.tentech.ca/2011/05/stream-tee-in-python-saving-stdout-to-file-while-keeping-the-console-alive/
+    Based on https://gist.github.com/327585 by Anand Kunal
+
+    pray for Py3 functionality
+    """
+
+    def __init__(self, stream1, stream2):
+        self.stream1 = stream1
+        self.stream2 = stream2
+        self.__missing_method_name = None  # Hack!
+
+    def __getattribute__(self, name):
+        return object.__getattribute__(self, name)
+
+    def __getattr__(self, name):
+        self.__missing_method_name = name  # Could also be a property
+        return getattr(self, '__methodmissing__')
+
+    def __methodmissing__(self, *args, **kwargs):
+        # Emit method call to the log copy
+        callable2 = getattr(self.stream2, self.__missing_method_name)
+        callable2(*args, **kwargs)
+
+        # Emit method call to stdout (stream 1)
+        callable1 = getattr(self.stream1, self.__missing_method_name)
+        return callable1(*args, **kwargs)

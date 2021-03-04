@@ -79,8 +79,9 @@ def misclassified_regions(imgs, labels, class_names, predictions,
         plt.close(fig.axes.figure)
 
 
+# noinspection PyUnreachableCode
 def visualize_results(model, dataset, class_names, epochs_trained,
-                      output_location=None, show=False, show_misclassified=False, val=False):
+                      output_location=None, show=False, misclassified=False, val=False):
     """Show misclassified regions and confusion matrix
 
     Get predictions for whole dataset and manually evaluate the model predictions.
@@ -93,7 +94,7 @@ def visualize_results(model, dataset, class_names, epochs_trained,
     :param epochs_trained:
     :param output_location:
     :param show:
-    :param show_misclassified:
+    :param misclassified:
     """
 
     """Dataset processing"""
@@ -115,14 +116,15 @@ def visualize_results(model, dataset, class_names, epochs_trained,
     false_predictions = np.where(labels != predictions)[0]  # reduce dimensions of a nested array
 
     """Misclassified regions"""
-    if output_location:
-        misclassified_dir = os.path.join(output_location, 'missclassified_regions')
-        os.makedirs(misclassified_dir, exist_ok=True)
-    else:
-        misclassified_dir = None
+    if misclassified:
+        if output_location:
+            misclassified_dir = os.path.join(output_location, 'missclassified_regions')
+            os.makedirs(misclassified_dir, exist_ok=True)
+        else:
+            misclassified_dir = None
 
-    misclassified_regions(imgs, labels, class_names, predictions,
-                          false_predictions, misclassified_dir, show=show_misclassified)
+        misclassified_regions(imgs, labels, class_names, predictions,
+                              false_predictions, misclassified_dir, show=misclassified)
 
     """Confusion matrix"""
     confusion_matrix(model.name, class_names, epochs_trained, labels,
@@ -133,10 +135,13 @@ def visualize_results(model, dataset, class_names, epochs_trained,
     confident = len(maxes[maxes > 0.9])
     undecided = len(maxes[maxes <= 0.125])
 
-    print('Accuracy: {0:0.2g}%'.format(100.0 * (1 - len(false_predictions) / len(predictions))))
+    accuracy = 100.0 * (1 - len(false_predictions) / len(predictions))
+    print('Accuracy: {0:0.2g}%'.format(accuracy))
     print('Prediction types:\n',
-          '\tConfident: {}\n'.format(confident),
-          '\tUndecided: {}'.format(undecided))
+           '\tConfident: {}\n'.format(confident),
+           '\tUndecided: {}'.format(undecided))
+
+    return accuracy
 
     """
     for i in undecided_idx:
@@ -191,23 +196,14 @@ def make_prediction(model, img, maxes_only=False, undecided_only=False):
         maxes[np.arange(predictions.shape[0])[:, None],  # in every row
               np.arange(predictions.shape[1]),  # in every column
               max_indexes] = 1  # the maximum-predicted category (=channel) is set to 1
+
         predictions = maxes
 
     if undecided_only and not maxes_only:
-        # todo simplify through (max < K)
-        # add undecided predictions - per element [x, y, z])
-        lower_bound_indices = np.where(predictions > 0.1, True, False)
-        upper_bound_indices = np.where(predictions < 0.2, True, False)
-
-        # subtract decisive predictions - per spatial position [x, y, :]
         decisive_values = np.max(predictions, axis=2)
-        decisive_indices = np.where(decisive_values > 0.8, True, False)
+        decisive_indices = np.where(decisive_values < 0.5, True, False)
         decisive_indices = np.stack((decisive_indices,) * 8, axis=-1)
-
-        # A ^ B ^ ~C
-        undecided = np.where(lower_bound_indices, 1, 0)
-        undecided = np.where(upper_bound_indices, undecided, 0)
-        undecided = np.where(decisive_indices, 0, undecided)
+        undecided = np.where(decisive_indices, predictions, 0)
 
         predictions = undecided
 
@@ -250,12 +246,12 @@ def predict_full_image(model, class_names, labels, img_path, output_location=Non
         category_titles = category_losses
         plots_title = str(losses_sum // 1e6) + 'M'
 
-    display_predictions(predictions, img, img_path, category_titles, model, plots_title,
+    display_predictions(predictions, img, img_path, category_titles, plots_title,
                         heatmap_alpha, show=show, output_location=output_location)
 
 
-def display_predictions(predictions, img, img_path, class_names, model, title='',
-                        heatmap_alpha=0.6, show=True, output_location=None, superimpose=False):
+def display_predictions(predictions, img, img_path, class_names, title='', heatmap_alpha=0.6, show=True,
+                        output_location=None, superimpose=False):
     # Plot predictions as heatmaps superimposed on input image
     predictions = np.uint8(255 * predictions)
     class_activations = []
@@ -389,7 +385,7 @@ def show_layer_activations(model, data_augmentation, ds, class_names, show=True,
                              row * size: (row + 1) * size] = channel_image
 
         scale = 1. / size
-        plt.figure(figsize=(scale * display_grid.shape[1],
+        fig = plt.figure(figsize=(scale * display_grid.shape[1],
                             scale * display_grid.shape[0]))
         plt.title(layer_name)
         plt.grid(False)
@@ -400,6 +396,8 @@ def show_layer_activations(model, data_augmentation, ds, class_names, show=True,
 
         if show:
             plt.show()
+
+        plt.close(fig.figure)
 
         # print(f'{layer_name}: {out_of_range_count=} / {total_count}')
 
@@ -469,49 +467,71 @@ def full_img_pred_error(prediction, img_path, img, labels, class_names):
     p_argmax = np.argmax(prediction, axis=2)
 
     # grid for calculating distances
-    grid_indices = np.meshgrid(np.arange(img.shape[1]), np.arange(img.shape[0]))
-    grid_indices = np.vstack([grid_indices])
-    grid_indices = np.transpose(grid_indices, (1, 2, 0))
+    grid = np.meshgrid(np.arange(img.shape[1]), np.arange(img.shape[0]))
+    grid = np.vstack([grid])
+    grid = np.transpose(grid, (1, 2, 0))
 
     category_losses = {}
 
     # background
-    mask = np.where(p_argmax == 0, True, False)  # 2D mask
-    cat_idx = grid_indices[mask]  # list of 2D coords
-    ciu = np.unique(cat_idx, axis=0)
-    if len(ciu) != len(cat_idx):
-        print(f'uniq {len(ciu)} / {len(cat_idx)}')
+    bg_mask = np.where(p_argmax == 0, True, False)  # 2D mask
+    bg_list = grid[bg_mask]  # list of 2D coords
+    uniq = np.unique(bg_list, axis=0)
+    if len(uniq) != len(bg_list):
+        print(f'uniq {len(uniq)} / {len(bg_list)}')
 
-    per_pixel_distances = cdist(cat_idx, np.array(file_labels_merged))
+    per_pixel_distances = cdist(bg_list, np.array(file_labels_merged))
     per_pixel_loss = np.min(per_pixel_distances, axis=1)
     penalized = per_pixel_loss[per_pixel_loss < min_dist_background]
     category_losses['background'] = min_dist_background_penalty * len(penalized)
 
     # keypoint categories
-    for i, cat in enumerate(class_names[1:]):  # skip 0 == background
+    # ppl = []
+    for i in range(1, len(class_names)):  # skip 0 == background
         # todo same fix as for background
+        cat = class_names[i]
 
         # filter predictions of given category
-        cat_idx = grid_indices[p_argmax == i]
+        cat_list = grid[p_argmax == i]
+        # cat_mask = np.where(p_argmax == i, True, False)  # 2D mask
+        # cat_grid = None  # todo ended here
 
         if cat not in file_labels:  # no GT labels of this category
             # predicted non-present category
-            category_losses[cat] = len(cat_idx) * no_such_cat_penalty
-            print(cat, category_losses[cat])
+            category_losses[cat] = len(cat_list) * no_such_cat_penalty
+            print(f'{cat} not in {img_path} -> {category_losses[cat]}')
             continue
 
         # distance of each predicted point to each GT label
-        per_pixel_distances = np.square(cdist(cat_idx, np.array(file_labels[cat])))
+        per_pixel_distances = np.square(cdist(cat_list, np.array(file_labels[cat])))
         per_pixel_loss = np.min(per_pixel_distances, axis=1)
-        print(np.mean(per_pixel_loss))
+        # print(per_pixel_distances.shape, per_pixel_loss.shape)
 
         category_losses[cat] = np.sum(per_pixel_loss)
+        # ppl.append(per_pixel_loss)
 
     loss_sum = np.sum(list(category_losses.values()))
-    # print(img_path, loss_sum)  # todo debugging
+
+    # display_predictions(predictions, img, img_path, category_titles)
 
     return loss_sum,\
         [str(cat) + ': 1e{0:0.2g}'.format(log10(loss + 1)) for cat, loss in category_losses.items()]
+
+
+def error_location():
+    # args: predictions, img, labels
+    def dst_pt2grid(pt):
+        return np.hypot(gx - pt[0], gy - pt[1])
+
+    grid = np.meshgrid(np.arange(img.shape[1]), np.arange(img.shape[0]))
+
+    # https://stackoverflow.com/questions/36013063/what-is-the-purpose-of-meshgrid-in-python-numpy
+    l = list(map(hp, b))
+    lv = np.vstack([l])
+    mlv = np.min(lv, axis=0)  # minimum distance to any keypoint
+    # do for every category
+
+    # grid distance to keypoint can be cached and loaded from a pickle?
 
 
 def show_augmentation(data_augmentation, dataset):
