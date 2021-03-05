@@ -38,6 +38,47 @@ def lr_scheduler(epoch, lr, start=10, end=150, decay=-0.10):
         return lr * tf.math.exp(decay)
 
 
+class RandomColorDistortion(tf.keras.layers.Layer):
+    """Apply multiple color-related augmentations
+
+    Adapted from:
+    https://github.com/GoogleCloudPlatform/practical-ml-vision-book/blob/master/06_preprocessing/06e_colordistortion.ipynb
+
+    efficiency of chained operations (jpg -> float, aug, float -> jpg)
+    """
+    def __init__(self,
+                 brightness_delta=0.2,
+                 contrast_range=(0.5, 1.5),
+                 hue_delta=0.2,
+                 saturation_range=(0.75, 1.25),
+                 **kwargs):
+        super(RandomColorDistortion, self).__init__(**kwargs)
+        self.brightness = brightness_delta
+        self.contrast_range = contrast_range
+        self.hue = hue_delta
+        self.saturation_range = saturation_range
+
+    def call(self, images, training=None):
+        if not training:
+            return images
+
+        # contrast = tf.random.uniform((1,), self.contrast_range[0], self.contrast_range[1])[0]
+
+        # brightness = tf.random.uniform((1,), self.brightness_range[0], self.brightness_range[1])[0]
+
+        # hue = tf.random.uniform((1,), self.hue_range[0], self.hue_range[1])[0]
+        # saturation = tf.random.uniform((1,), self.saturation_range[0], self.saturation_range[1])[0]
+
+        # tf.print(contrast, brightness, hue)
+
+        images = tf.image.random_contrast(images, self.contrast_range[0], self.contrast_range[1])
+        images = tf.image.random_brightness(images, self.brightness)
+        images = tf.image.random_hue(images, self.hue)
+        images = tf.image.random_saturation(images, self.saturation_range[0], self.saturation_range[1])
+        images = tf.clip_by_value(images, 0, 255)
+        return images
+
+
 def print_both(output_file_path):
     f = open(output_file_path, 'w')  # where to close
     print_orig = print

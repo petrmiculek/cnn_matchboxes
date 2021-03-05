@@ -11,7 +11,6 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 from tensorflow.keras.layers.experimental.preprocessing import RandomFlip, RandomRotation, CenterCrop
 import datetime
-from tensorflow.keras.callbacks import TensorBoard, ReduceLROnPlateau, LearningRateScheduler
 
 import cv2 as cv
 import numpy as np
@@ -29,45 +28,6 @@ from src_util.general import safestr
 
 from IPython.display import Image, display
 import matplotlib.cm as cm
-
-
-def get_model(model_factory, num_classes, name_suffix=''):
-    base_model = model_factory(num_classes, name_suffix=name_suffix)
-    base_model.summary()
-
-    data_augmentation = tf.keras.Sequential([
-        tf.keras.layers.Input(shape=(64, 64, 3)),
-        RandomFlip("horizontal"),
-        RandomRotation(1/8, fill_mode='reflect'),
-        CenterCrop(32, 32),
-    ], name='aug_only')
-
-    model = tf.keras.Sequential([data_augmentation, base_model], name=base_model.name + '_full')
-    scce_loss = tf.losses.SparseCategoricalCrossentropy(from_logits=False)
-    accu = util.Accu(name='accu')  # ~= SparseCategoricalAccuracy
-
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=2e-4),
-        loss=scce_loss,
-        metrics=[accu,
-                 # tf.keras.metrics.SparseCategoricalCrossentropy(from_logits=True, name='t'),
-                 # tf.keras.metrics.SparseCategoricalCrossentropy(from_logits=False, name='f'),
-                 ])
-
-    # lr_sched = LearningRateScheduler(util.lr_scheduler)
-    reduce_lr = ReduceLROnPlateau(monitor='accu', factor=0.2,
-                                  patience=5, min_lr=1e-7)
-
-    tensorboard_callback = TensorBoard(logs_dir, histogram_freq=1, profile_batch='300,400')
-    callbacks = [
-        tensorboard_callback,
-        tf.keras.callbacks.EarlyStopping(monitor='accu',
-                                         patience=10),
-        # lr_sched,
-        reduce_lr,
-    ]
-
-    return base_model, model, data_augmentation, callbacks
 
 
 if __name__ == '__main__':
@@ -88,7 +48,8 @@ if __name__ == '__main__':
     num_classes = len(class_names)
 
     """ Create/Load a model """
-    base_model, model, data_augmentation, callbacks = get_model(models.fcn_residual_1, num_classes, name_suffix=time)
+    base_model, model, data_augmentation, callbacks = models.get_model(models.fcn_residual_1, num_classes,
+                                                                       name_suffix=time, logs_dir=logs_dir)
 
     """ Model outputs dir """
     output_location = os.path.join('outputs', model.name)
@@ -98,7 +59,6 @@ if __name__ == '__main__':
 
     stdout = sys.stdout
     out_stream = open(os.path.join(output_location, 'stdout.txt'), 'w')
-    # print = util.print_both(os.path.join(output_location, 'stdout.txt'))
     sys.stdout = util.DuplicateStream(sys.stdout, out_stream)
 
     """ TensorBoard loggging """
@@ -124,9 +84,9 @@ if __name__ == '__main__':
     epochs_trained += epochs
 
     # base_model.load_weights('models_saved/tff_w128_l18augTrue_20210224183906')
-    # base_model.load_weights('models_saved/non_maxpoolaugTrue_20210228212535')
+    # base_model.load_weights('models_saved/residual_20210305125438_full2')
 
-    model.save_weights(os.path.join('models_saved', model.name + '2'))
+    base_model.save_weights(os.path.join('models_saved', model.name))
 
     """Evaluate model"""
     # output_location = None  # do-not-save flag
@@ -145,10 +105,6 @@ if __name__ == '__main__':
     show_layer_activations(base_model, data_augmentation, val_ds, class_names, show=False, output_location=output_location)
 
 """dump"""
-# from google.colab import drive
-# drive.mount('/content/drive')
-# data_dir = '/content/drive/My Drive/sirky/image_regions_64_050'
-
 
 # for i, (logits, augment) in enumerate(list(product([True, False], [True, False]))):
 

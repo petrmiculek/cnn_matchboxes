@@ -5,9 +5,11 @@ import os
 import numpy as np
 import seaborn as sns
 import tensorflow as tf
+import cv2 as cv
+import PIL
+
 from matplotlib import pyplot as plt
 from sklearn.metrics import confusion_matrix as conf_mat
-import cv2 as cv
 from math import ceil
 from scipy.spatial.distance import cdist
 from src_util.labels import load_labels
@@ -16,18 +18,31 @@ from src_util.general import safestr
 
 
 def confusion_matrix(model_name, class_names, epochs_trained, labels,
-                     predictions, output_location=None, show=True, val=False):
+                     predictions, output_location=None, show=True,
+                     val=False, normalize=True):
     """Create and show/save confusion matrix"""
-    cm = conf_mat(list(labels), list(predictions), normalize='true')
+    kwargs = {}
+    if normalize:
+        # {'true', 'pred', 'all'}, default = None
+        normalize = 'true'
+        kwargs['min'] = 0.0
+        kwargs['max'] = 0.0
+        kwargs['fmt'] = '0.2f'
+    else:
+        normalize = None
+        kwargs['fmt'] = 'd'
+
+    cm = conf_mat(list(labels), list(predictions), normalize=normalize)
 
     fig_cm = sns.heatmap(
         cm,
         annot=True,
         xticklabels=class_names,
         yticklabels=class_names,
-        fmt='0.2f',
-        vmin=0.0,
-        vmax=1.0
+        # fmt='0.2f',
+        # vmin=0.0,
+        # vmax=1.0
+        **kwargs
     )
     fig_cm.set_title('Confusion Matrix\n{} {} [e{}]'.format(model_name, 'val' if val else 'train', epochs_trained))
     fig_cm.set_xlabel("Predicted")
@@ -124,11 +139,11 @@ def visualize_results(model, dataset, class_names, epochs_trained,
             misclassified_dir = None
 
         misclassified_regions(imgs, labels, class_names, predictions,
-                              false_predictions, misclassified_dir, show=misclassified)
+                              false_predictions, misclassified_dir, show=False)
 
     """Confusion matrix"""
     confusion_matrix(model.name, class_names, epochs_trained, labels,
-                     predictions, output_location=output_location, show=show, val=val)
+                     predictions, output_location=output_location, show=show, val=val, normalize=False)
 
     """More metrics"""
     maxes = np.max(predictions_juice, axis=1)
@@ -253,6 +268,7 @@ def predict_full_image(model, class_names, labels, img_path, output_location=Non
 def display_predictions(predictions, img, img_path, class_names, title='', heatmap_alpha=0.6, show=True,
                         output_location=None, superimpose=False):
     # Plot predictions as heatmaps superimposed on input image
+    predictions = np.square(predictions)  # todo note down comparison y/n
     predictions = np.uint8(255 * predictions)
     class_activations = []
 

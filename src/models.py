@@ -7,6 +7,47 @@ import numpy as np
 from math import log2, ceil
 import util
 from src_util.general import safestr
+from tensorflow.keras.callbacks import TensorBoard, ReduceLROnPlateau, LearningRateScheduler
+
+
+def get_model(model_factory, num_classes=8, name_suffix='', logs_dir='logs/unknown'):
+    base_model = model_factory(num_classes, name_suffix=name_suffix)
+    base_model.summary()
+
+    data_augmentation = tf.keras.Sequential([
+        tf.keras.layers.Input(shape=(64, 64, 3)),
+        RandomFlip("horizontal"),
+        RandomRotation(1/8, fill_mode='reflect'),
+        util.RandomColorDistortion(),
+        CenterCrop(32, 32),
+    ], name='aug_only')
+
+    model = tf.keras.Sequential([data_augmentation, base_model], name=base_model.name + '_full')
+    scce_loss = tf.losses.SparseCategoricalCrossentropy(from_logits=False)
+    accu = util.Accu(name='accu')  # ~= SparseCategoricalAccuracy
+
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
+        loss=scce_loss,
+        metrics=[accu,
+                 # tf.keras.metrics.SparseCategoricalCrossentropy(from_logits=True, name='t'),
+                 # tf.keras.metrics.SparseCategoricalCrossentropy(from_logits=False, name='f'),
+                 ])
+
+    # lr_sched = LearningRateScheduler(util.lr_scheduler)
+    reduce_lr = ReduceLROnPlateau(monitor='accu', factor=0.2,
+                                  patience=5, min_lr=1e-7)
+
+    tensorboard_callback = TensorBoard(logs_dir, histogram_freq=1, profile_batch='300,400')
+    callbacks = [
+        tensorboard_callback,
+        tf.keras.callbacks.EarlyStopping(monitor='accu',
+                                         patience=10),
+        # lr_sched,
+        reduce_lr,
+    ]
+
+    return base_model, model, data_augmentation, callbacks
 
 
 def dilated_1(num_classes, name_suffix=''):
