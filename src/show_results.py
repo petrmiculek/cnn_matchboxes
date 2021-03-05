@@ -15,6 +15,7 @@ from scipy.spatial.distance import cdist
 from src_util.labels import load_labels
 from math import log10, sqrt, floor
 from src_util.general import safestr
+from copy import deepcopy
 
 
 def confusion_matrix(model_name, class_names, epochs_trained, labels,
@@ -268,11 +269,12 @@ def predict_full_image(model, class_names, labels, img_path, output_location=Non
 def display_predictions(predictions, img, img_path, class_names, title='', heatmap_alpha=0.6, show=True,
                         output_location=None, superimpose=False):
     # Plot predictions as heatmaps superimposed on input image
-    predictions = np.square(predictions)  # todo note down comparison y/n
+    # predictions = np.square(predictions)  # todo note down comparison y/n
     predictions = np.uint8(255 * predictions)
     class_activations = []
 
-    for i in range(0, len(class_names)):
+    print(predictions.shape)
+    for i in range(8):
         pred = np.stack((predictions[:, :, i],) * 3, axis=-1)  # 2d to grayscale (R=G=B)
         pred = cv.applyColorMap(pred, cv.COLORMAP_VIRIDIS)
         if superimpose:
@@ -438,7 +440,7 @@ def heatmaps_all(model, class_names, val=True,
                            )
 
 
-def full_img_pred_error(prediction, img_path, img, labels, class_names):
+def full_img_pred_error(predictions, img_path, img, labels, class_names):
     """full prediction metric
 
     todo work with prediction probability instead of argmax?
@@ -454,7 +456,7 @@ def full_img_pred_error(prediction, img_path, img, labels, class_names):
     """
     min_dist_background = 5.0
     min_dist_background_penalty = 10.0
-    no_such_cat_penalty = 50.0
+    no_such_cat_penalty = 250.0
 
     def rescale_file_labels(file_labels):
         # todo test function: show annotations on a scaled-down image
@@ -468,8 +470,8 @@ def full_img_pred_error(prediction, img_path, img, labels, class_names):
         return new
 
     # filter only labels for given image
-    file_labels = [val for filename, val in labels.items() if
-                   filename in img_path]  # key in img_name, because img_name contains full path
+    file_labels = deepcopy([val for filename, val in labels.items() if
+                            filename in img_path])  # key in img_name, because img_name contains full path
 
     if len(file_labels) != 1:
         print('invalid labels for file {}\n{}'.format(img_path, file_labels), file=sys.stderr)
@@ -477,10 +479,10 @@ def full_img_pred_error(prediction, img_path, img, labels, class_names):
 
     file_labels = file_labels[0]
     file_labels = rescale_file_labels(file_labels)
-    file_labels_merged = functools.reduce(operator.iconcat, [v for v in file_labels.values()])
+    file_labels_merged = np.vstack([v for v in file_labels.values()])
 
     # make prediction one-hot over channels
-    p_argmax = np.argmax(prediction, axis=2)
+    p_argmax = np.argmax(predictions, axis=2)
 
     # grid for calculating distances
     grid = np.meshgrid(np.arange(img.shape[1]), np.arange(img.shape[0]))
@@ -489,14 +491,14 @@ def full_img_pred_error(prediction, img_path, img, labels, class_names):
 
     category_losses = {}
 
-    # background
+    # backgroundop
     bg_mask = np.where(p_argmax == 0, True, False)  # 2D mask
     bg_list = grid[bg_mask]  # list of 2D coords
     uniq = np.unique(bg_list, axis=0)
     if len(uniq) != len(bg_list):
         print(f'uniq {len(uniq)} / {len(bg_list)}')
 
-    per_pixel_distances = cdist(bg_list, np.array(file_labels_merged))
+    per_pixel_distances = cdist(bg_list, file_labels_merged)
     per_pixel_loss = np.min(per_pixel_distances, axis=1)
     penalized = per_pixel_loss[per_pixel_loss < min_dist_background]
     category_losses['background'] = min_dist_background_penalty * len(penalized)
@@ -504,7 +506,7 @@ def full_img_pred_error(prediction, img_path, img, labels, class_names):
     # keypoint categories
     # ppl = []
     for i in range(1, len(class_names)):  # skip 0 == background
-        # todo same fix as for background
+        # todo same fix as for background -- not needed as I don't use grid here
         cat = class_names[i]
 
         # filter predictions of given category
@@ -528,25 +530,55 @@ def full_img_pred_error(prediction, img_path, img, labels, class_names):
 
     loss_sum = np.sum(list(category_losses.values()))
 
-    # display_predictions(predictions, img, img_path, category_titles)
-
     return loss_sum,\
         [str(cat) + ': 1e{0:0.2g}'.format(log10(loss + 1)) for cat, loss in category_losses.items()]
 
 
-def error_location():
-    # args: predictions, img, labels
+def error_location(predictions, img, file_labels, class_names):
+    """Attribute full image error in full image predictions
+
+    todo calling of this
+
+    :param predictions:
+    :param img:
+    :param file_labels:
+    :param class_names:
+    :return:
+
+    inspiration (N-th answer):
+    https://stackoverflow.com/questions/36013063/what-is-the-purpose-of-meshgrid-in-python-numpy
+    """
     def dst_pt2grid(pt):
         return np.hypot(gx - pt[0], gy - pt[1])
 
-    grid = np.meshgrid(np.arange(img.shape[1]), np.arange(img.shape[0]))
+    gx, gy = np.meshgrid(np.arange(img.shape[1]), np.arange(img.shape[0]))
+    flat_penalty = np.zeros((img.shape[0], img.shape[1])) + 0
 
-    # https://stackoverflow.com/questions/36013063/what-is-the-purpose-of-meshgrid-in-python-numpy
-    l = list(map(hp, b))
-    lv = np.vstack([l])
-    mlv = np.min(lv, axis=0)  # minimum distance to any keypoint
-    # do for every category
+    cat_distances = []
+    for i, cat in enumerate(class_names):
+        if cat not in file_labels:
+            if cat == 'background':
+                cat_distances.append(np.zeros((img.shape[0], img.shape[1])))
+            else:
+                cat_distances.append(flat_penalty)
+            continue
 
+        cat_labels = file_labels[cat]
+        distance_layers = list(map(dst_pt2grid, cat_labels))
+        distance_layers = np.vstack([distance_layers])
+        min_distance = np.min(distance_layers, axis=0)  # minimum distance to any keypoint
+        cat_distances.append(min_distance)
+
+    cat_distances = np.dstack(cat_distances)
+    titles = np.append(class_names, 'full_image')
+    # cat_distances = cat_distances / np.max(cat_distances)
+
+    # elementwise multiply predictions with cat_distances
+    tst = predictions * cat_distances
+
+    tst /= np.max(tst)
+
+    display_predictions(tst, img, img_path, titles)
     # grid distance to keypoint can be cached and loaded from a pickle?
 
 

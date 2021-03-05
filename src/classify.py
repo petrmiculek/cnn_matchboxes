@@ -24,7 +24,7 @@ from show_results import visualize_results, predict_full_image, show_layer_activ
 from src_util.labels import load_labels
 import models
 import util
-from src_util.general import safestr
+from src_util.general import safestr, DuplicateStream
 
 from IPython.display import Image, display
 import matplotlib.cm as cm
@@ -59,7 +59,7 @@ if __name__ == '__main__':
 
     stdout = sys.stdout
     out_stream = open(os.path.join(output_location, 'stdout.txt'), 'w')
-    sys.stdout = util.DuplicateStream(sys.stdout, out_stream)
+    sys.stdout = DuplicateStream(sys.stdout, out_stream)
 
     """ TensorBoard loggging """
     os.makedirs(logs_dir, exist_ok=True)
@@ -84,9 +84,9 @@ if __name__ == '__main__':
     epochs_trained += epochs
 
     # base_model.load_weights('models_saved/tff_w128_l18augTrue_20210224183906')
-    # base_model.load_weights('models_saved/residual_20210305125438_full2')
-
-    base_model.save_weights(os.path.join('models_saved', model.name))
+    base_model.load_weights('models_saved/residual_20210305142236_full')
+    raise ValueError()
+    # base_model.save_weights(os.path.join('models_saved', model.name))
 
     """Evaluate model"""
     # output_location = None  # do-not-save flag

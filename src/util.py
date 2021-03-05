@@ -62,15 +62,6 @@ class RandomColorDistortion(tf.keras.layers.Layer):
         if not training:
             return images
 
-        # contrast = tf.random.uniform((1,), self.contrast_range[0], self.contrast_range[1])[0]
-
-        # brightness = tf.random.uniform((1,), self.brightness_range[0], self.brightness_range[1])[0]
-
-        # hue = tf.random.uniform((1,), self.hue_range[0], self.hue_range[1])[0]
-        # saturation = tf.random.uniform((1,), self.saturation_range[0], self.saturation_range[1])[0]
-
-        # tf.print(contrast, brightness, hue)
-
         images = tf.image.random_contrast(images, self.contrast_range[0], self.contrast_range[1])
         images = tf.image.random_brightness(images, self.brightness)
         images = tf.image.random_hue(images, self.hue)
@@ -78,44 +69,6 @@ class RandomColorDistortion(tf.keras.layers.Layer):
         images = tf.clip_by_value(images, 0, 255)
         return images
 
-
-def print_both(output_file_path):
-    f = open(output_file_path, 'w')  # where to close
-    print_orig = print
-
-    def print_inner(*args):
-        print_orig(*args)
-        print_orig(*args, file=f)
-
-    return print_inner
-
-
-class DuplicateStream(object):
-    """Make stream double-ended, outputting to stdout and a file
-
-    http://www.tentech.ca/2011/05/stream-tee-in-python-saving-stdout-to-file-while-keeping-the-console-alive/
-    Based on https://gist.github.com/327585 by Anand Kunal
-
-    pray for Py3 functionality
-    """
-
-    def __init__(self, stream1, stream2):
-        self.stream1 = stream1
-        self.stream2 = stream2
-        self.__missing_method_name = None  # Hack!
-
-    def __getattribute__(self, name):
-        return object.__getattribute__(self, name)
-
-    def __getattr__(self, name):
-        self.__missing_method_name = name  # Could also be a property
-        return getattr(self, '__methodmissing__')
-
-    def __methodmissing__(self, *args, **kwargs):
-        # Emit method call to the log copy
-        callable2 = getattr(self.stream2, self.__missing_method_name)
-        callable2(*args, **kwargs)
-
-        # Emit method call to stdout (stream 1)
-        callable1 = getattr(self.stream1, self.__missing_method_name)
-        return callable1(*args, **kwargs)
+    def get_config(self, *args, **kwargs):
+        # borderline cheating
+        return super(RandomColorDistortion, self).get_config(*args, **kwargs)
