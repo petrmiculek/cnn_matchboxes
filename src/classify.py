@@ -4,35 +4,38 @@ Google colab live version from ~december
 https://colab.research.google.com/drive/1F28FEGGLmy8-jW9IaOo60InR9VQtPbmG
 
 """
+
+# stdlib
 import os
 import sys
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-
-import tensorflow as tf
-from tensorflow.keras.layers.experimental.preprocessing import RandomFlip, RandomRotation, CenterCrop
 import datetime
-
-import cv2 as cv
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib as mpl
 from itertools import product
 from contextlib import redirect_stdout
 
+# external libs
+import tensorflow as tf
+from tensorflow.keras.utils import plot_model
+
+import cv2 as cv
+import numpy as np
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+from IPython.display import Image, display
+
+# local files
+import models
+import util
 from datasets import get_dataset
 from show_results import visualize_results, predict_full_image, show_layer_activations, heatmaps_all
 from src_util.labels import load_labels
-import models
-import util
 from src_util.general import safestr, DuplicateStream
-
-from IPython.display import Image, display
-import matplotlib.cm as cm
-
 
 if __name__ == '__main__':
 
     data_dir = 'image_regions_64_050'
+    checkpoint_path = '/tmp/checkpoint'
 
     time = safestr(datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
     logs_dir = os.path.join('logs', time)
@@ -49,13 +52,14 @@ if __name__ == '__main__':
 
     """ Create/Load a model """
     base_model, model, data_augmentation, callbacks = models.get_model(models.fcn_residual_1, num_classes,
-                                                                       name_suffix=time, logs_dir=logs_dir)
+                                                                       name_suffix=time, logs_dir=logs_dir,
+                                                                       augment=True, checkpoint_path=checkpoint_path)
 
     """ Model outputs dir """
     output_location = os.path.join('outputs', model.name)
     if not os.path.isdir(output_location):
         os.makedirs(output_location, exist_ok=True)
-    tf.keras.utils.plot_model(base_model, os.path.join(output_location, base_model.name + "_architecture.png"), show_shapes=True)
+    plot_model(base_model, os.path.join(output_location, base_model.name + "_architecture.png"), show_shapes=True)
 
     stdout = sys.stdout
     out_stream = open(os.path.join(output_location, 'stdout.txt'), 'w')
@@ -82,11 +86,12 @@ if __name__ == '__main__':
         verbose=2  # one line per epoch
     )
     epochs_trained += epochs
+    model.load_weights(checkpoint_path)
 
     # base_model.load_weights('models_saved/tff_w128_l18augTrue_20210224183906')
-    base_model.load_weights('models_saved/residual_20210305142236_full')
-    raise ValueError()
-    # base_model.save_weights(os.path.join('models_saved', model.name))
+    # base_model.load_weights('models_saved/residual_20210305142236_full')
+    # raise ValueError()
+    base_model.save_weights(os.path.join('models_saved', model.name))
 
     """Evaluate model"""
     # output_location = None  # do-not-save flag

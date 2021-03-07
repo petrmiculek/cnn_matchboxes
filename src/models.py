@@ -3,24 +3,26 @@ from tensorflow.keras.layers import \
     add, Conv2D, BatchNormalization, Softmax, Input, MaxPool2D, Cropping2D
 from tensorflow.keras.layers.experimental.preprocessing import \
     CenterCrop, RandomFlip, RandomRotation
+from tensorflow.keras.callbacks import \
+    TensorBoard, ReduceLROnPlateau, \
+    LearningRateScheduler, ModelCheckpoint
 import numpy as np
 from math import log2, ceil
 import util
 from src_util.general import safestr
-from tensorflow.keras.callbacks import TensorBoard, ReduceLROnPlateau, LearningRateScheduler
 
 
-def get_model(model_factory, num_classes=8, name_suffix='', logs_dir='logs/unknown'):
+def get_model(model_factory, num_classes=8, name_suffix='', logs_dir='logs/unknown', checkpoint_path='/tmp/checkpoint', augment=True):
     base_model = model_factory(num_classes, name_suffix=name_suffix)
     base_model.summary()
 
-    data_augmentation = tf.keras.Sequential([
-        tf.keras.layers.Input(shape=(64, 64, 3)),
-        RandomFlip("horizontal"),
-        RandomRotation(1/8, fill_mode='reflect'),
-        util.RandomColorDistortion(),
-        CenterCrop(32, 32),
-    ], name='aug_only')
+    data_augmentation = tf.keras.Sequential(name='aug_only')
+    data_augmentation.add(Input(shape=(64, 64, 3)))
+    if augment:
+        data_augmentation.add(RandomFlip("horizontal"))
+        data_augmentation.add(RandomRotation(1 / 8, fill_mode='reflect'))
+        data_augmentation.add(util.RandomColorDistortion())  # todo next without distortion + with (but no hue shift)
+    data_augmentation.add(CenterCrop(32, 32))
 
     model = tf.keras.Sequential([data_augmentation, base_model], name=base_model.name + '_full')
     scce_loss = tf.losses.SparseCategoricalCrossentropy(from_logits=False)
@@ -36,15 +38,22 @@ def get_model(model_factory, num_classes=8, name_suffix='', logs_dir='logs/unkno
 
     # lr_sched = LearningRateScheduler(util.lr_scheduler)
     reduce_lr = ReduceLROnPlateau(monitor='accu', factor=0.2,
-                                  patience=5, min_lr=1e-7)
+                                  patience=10, min_lr=1e-7)
 
     tensorboard_callback = TensorBoard(logs_dir, histogram_freq=1, profile_batch='300,400')
+    model_checkpoint_callback = ModelCheckpoint(
+        filepath=checkpoint_path,
+        save_weights_only=True,
+        monitor='val_accu',
+        mode='max',
+        save_best_only=True)
+
     callbacks = [
         tensorboard_callback,
-        tf.keras.callbacks.EarlyStopping(monitor='accu',
-                                         patience=10),
+        # tf.keras.callbacks.EarlyStopping(monitor='accu', patience=10),
         # lr_sched,
         reduce_lr,
+        model_checkpoint_callback
     ]
 
     return base_model, model, data_augmentation, callbacks
