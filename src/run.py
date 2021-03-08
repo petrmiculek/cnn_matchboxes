@@ -53,7 +53,7 @@ if __name__ == '__main__':
 
     """ Create/Load a model """
     if train:
-        base_model, model, data_augmentation, callbacks = models.build_model(models.dilated_1, num_classes,
+        base_model, model, data_augmentation, callbacks = models.build_model(models.fcn_residual_1, num_classes,
                                                                              name_suffix=time, logs_dir=logs_dir,
                                                                              augment=False, checkpoint_path=checkpoint_path)
     else:

@@ -34,13 +34,6 @@ bg_samples = 500  # per photo background locations
 
 params_suffix = '_{}_{:03d}'.format(region_side, int(scale * 100))
 
-input_folder = 'sirky' + '_val' * val
-output_folder = 'image_regions' + params_suffix + '_val' * val
-
-labels_file = input_folder + os.sep + 'labels.csv'
-bg_csv_file = output_folder + os.sep + 'background' + '_val' * val + '.csv'
-merged_labels_bg_csv = output_folder + os.sep + 'labels_with_bg' + '_val' * val + '.csv'
-
 radius = region_side // 2
 random.seed(1234)
 
@@ -103,8 +96,6 @@ def euclid_dist(pos1, pos2):
 
 
 if __name__ == '__main__':
-
-    # parse args
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--foreground', '-f',
@@ -138,6 +129,14 @@ if __name__ == '__main__':
     else:
         cutout_padding = radius
         shift_top = 0
+
+    # in/out folders
+    input_folder = 'sirky' + '_val' * val
+    output_folder = 'image_regions' + params_suffix + '_val' * val
+
+    labels_file = input_folder + os.sep + 'labels.csv'
+    bg_csv_file = output_folder + os.sep + 'background' + '_val' * val + '.csv'
+    merged_labels_bg_csv = output_folder + os.sep + 'labels_with_bg' + '_val' * val + '.csv'
 
     if not os.path.isdir(output_folder):
         os.makedirs(output_folder, exist_ok=True)

@@ -16,7 +16,7 @@ from scipy.spatial.distance import cdist
 
 from src_util.general import safestr
 from src_util.labels import load_labels
-from logging_results import log_losses
+from logging_results import log_full_img_pred_losses
 
 
 def confusion_matrix(model_name, class_names, epochs_trained, labels,
@@ -259,7 +259,7 @@ def predict_full_image(model, class_names, labels, img_path, output_location=Non
     elif maxes_only:
         plots_title = 'maxes'
     else:
-        losses_sum, category_losses = full_img_pred_error(predictions, img_path, img, labels, class_names, model_name)
+        losses_sum, category_losses = full_img_pred_error(predictions, img_path, img, labels, class_names, model.name)
         category_titles = category_losses
         plots_title = str(losses_sum // 1e6) + 'M'
 
@@ -327,8 +327,11 @@ def show_layer_activations(model, data_augmentation, ds, class_names, show=True,
         output_location = os.path.join(output_location, 'layer_activations')
         os.makedirs(output_location, exist_ok=True)
 
+    # choose non-background sample
     batch, labels = list(ds)[0]  # first batch
-    batch_img0 = tf.convert_to_tensor(batch[0:1])  # first image (made to a 1-element batch)
+    idx = np.argmax(labels)
+
+    batch_img0 = tf.convert_to_tensor(batch[idx: idx + 1])  # first image (made to a 1-element batch)
 
     layers = [layer.output for layer in model.layers]
     model_all_outputs = tf.keras.Model(inputs=model.input, outputs=layers)
@@ -336,7 +339,7 @@ def show_layer_activations(model, data_augmentation, ds, class_names, show=True,
     # no augmentation, only crop
     batch_img0 = data_augmentation(batch_img0, training=False)
 
-    print('GT   =', class_names[int(labels[0].numpy())])
+    print('GT   =', class_names[int(labels[idx].numpy())])
     all_layer_activations = model_all_outputs(batch_img0, training=False)
     pred = all_layer_activations[-1].numpy()
     predicted_category = class_names[np.argmax(pred)]
@@ -529,7 +532,7 @@ def full_img_pred_error(predictions, img_path, img, labels, class_names, model_n
     loss_sum = np.sum(loss_values_only)
 
     # log to csv
-    log_losses(model_name, img_path, loss_sum, loss_values_only)
+    log_full_img_pred_losses(model_name, img_path, loss_sum, loss_values_only)
 
     return loss_sum,\
         [str(cat) + ': 1e{0:0.2g}'.format(log10(loss + 1)) for cat, loss in category_losses.items()]
