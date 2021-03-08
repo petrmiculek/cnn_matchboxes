@@ -2,20 +2,21 @@ import functools
 import itertools
 import operator
 import os
+from math import ceil, floor, log10, sqrt
+from copy import deepcopy
+
 import numpy as np
 import seaborn as sns
 import tensorflow as tf
 import cv2 as cv
 import PIL
-
 from matplotlib import pyplot as plt
 from sklearn.metrics import confusion_matrix as conf_mat
-from math import ceil
 from scipy.spatial.distance import cdist
-from src_util.labels import load_labels
-from math import log10, sqrt, floor
+
 from src_util.general import safestr
-from copy import deepcopy
+from src_util.labels import load_labels
+from logging_results import log_losses
 
 
 def confusion_matrix(model_name, class_names, epochs_trained, labels,
@@ -258,7 +259,7 @@ def predict_full_image(model, class_names, labels, img_path, output_location=Non
     elif maxes_only:
         plots_title = 'maxes'
     else:
-        losses_sum, category_losses = full_img_pred_error(predictions, img_path, img, labels, class_names)
+        losses_sum, category_losses = full_img_pred_error(predictions, img_path, img, labels, class_names, model_name)
         category_titles = category_losses
         plots_title = str(losses_sum // 1e6) + 'M'
 
@@ -440,8 +441,8 @@ def heatmaps_all(model, class_names, val=True,
                            )
 
 
-def full_img_pred_error(predictions, img_path, img, labels, class_names):
-    """full prediction metric
+def full_img_pred_error(predictions, img_path, img, labels, class_names, model_name):
+    """Calculate error metric for full-image prediction
 
     todo work with prediction probability instead of argmax?
 
@@ -491,7 +492,7 @@ def full_img_pred_error(predictions, img_path, img, labels, class_names):
 
     category_losses = {}
 
-    # backgroundop
+    # background
     bg_mask = np.where(p_argmax == 0, True, False)  # 2D mask
     bg_list = grid[bg_mask]  # list of 2D coords
     uniq = np.unique(bg_list, axis=0)
@@ -504,9 +505,7 @@ def full_img_pred_error(predictions, img_path, img, labels, class_names):
     category_losses['background'] = min_dist_background_penalty * len(penalized)
 
     # keypoint categories
-    # ppl = []
     for i in range(1, len(class_names)):  # skip 0 == background
-        # todo same fix as for background -- not needed as I don't use grid here
         cat = class_names[i]
 
         # filter predictions of given category
@@ -523,12 +522,14 @@ def full_img_pred_error(predictions, img_path, img, labels, class_names):
         # distance of each predicted point to each GT label
         per_pixel_distances = np.square(cdist(cat_list, np.array(file_labels[cat])))
         per_pixel_loss = np.min(per_pixel_distances, axis=1)
-        # print(per_pixel_distances.shape, per_pixel_loss.shape)
 
         category_losses[cat] = np.sum(per_pixel_loss)
-        # ppl.append(per_pixel_loss)
 
-    loss_sum = np.sum(list(category_losses.values()))
+    loss_values_only = list(category_losses.values())
+    loss_sum = np.sum(loss_values_only)
+
+    # log to csv
+    log_losses(model_name, img_path, loss_sum, loss_values_only)
 
     return loss_sum,\
         [str(cat) + ': 1e{0:0.2g}'.format(log10(loss + 1)) for cat, loss in category_losses.items()]
@@ -545,7 +546,7 @@ def error_location(predictions, img, file_labels, class_names):
     :param class_names:
     :return:
 
-    inspiration (N-th answer):
+    inspiration for grid operations (N-th answer):
     https://stackoverflow.com/questions/36013063/what-is-the-purpose-of-meshgrid-in-python-numpy
     """
     def dst_pt2grid(pt):

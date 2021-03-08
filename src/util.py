@@ -6,10 +6,14 @@ Model-related utility code
 """
 
 
+def pred_reshape(y_pred):
+    return tf.reshape(y_pred, [tf.shape(y_pred)[0], tf.shape(y_pred)[3]])
+
+
 class Accu(tf.metrics.SparseCategoricalAccuracy):
     def update_state(self, y_true, y_pred, sample_weight=None):
-        # reshape prediction
-        y_pred_reshaped = tf.reshape(y_pred, [tf.shape(y_pred)[0], tf.shape(y_pred)[3]])
+        # reshape prediction - keep only Batch and Class-probabilities dimensions
+        y_pred_reshaped = pred_reshape(y_pred)
 
         # make prediction fail if it is undecided (all probabilities are 1/num_classes = 0.125)
         cond = tf.expand_dims(tf.math.equal(tf.math.reduce_max(y_pred_reshaped, axis=1), 0.125), axis=1)
@@ -18,17 +22,37 @@ class Accu(tf.metrics.SparseCategoricalAccuracy):
         return super(Accu, self).update_state(y_avoid_free, y_pred_reshaped, sample_weight)
 
 
+class Precision(tf.keras.metrics.Precision):
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        y_pred_reshaped = pred_reshape(y_pred)
+        y_pred_binary = tf.where(tf.argmax(y_pred_reshaped, axis=1) > 0, 1, 0)  # lambda: 1, lambda: 0
+
+        # y_true is evaluated as bool => ok as it is
+
+        return super(Precision, self).update_state(y_true, y_pred_binary, sample_weight)
+
+
+class Recall(tf.keras.metrics.Recall):
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        y_pred_reshaped = pred_reshape(y_pred)
+        y_pred_binary = tf.where(tf.argmax(y_pred_reshaped, axis=1) > 0, 1, 0)  # lambda: 1, lambda: 0
+
+        return super(Recall, self).update_state(y_true, y_pred_binary, sample_weight)
+
+
+
+
 def lr_scheduler(epoch, lr, start=10, end=150, decay=-0.10):
-    """
+    """Exponential learning rate decay
 
     https://keras.io/api/callbacks/learning_rate_scheduler/
 
-    :param epoch:
-    :param lr:
-    :param start:
-    :param end:
-    :param decay:
-    :return:
+    :param epoch: Current epoch number
+    :param lr: current learning rate
+    :param start: first epoch to start LR scheduling
+    :param end: last epoch of LR scheduling (constant LR after)
+    :param decay: Decay rate
+    :return: New learning rate
     """
     if epoch < start:
         return lr
@@ -44,7 +68,7 @@ class RandomColorDistortion(tf.keras.layers.Layer):
     Adapted from:
     https://github.com/GoogleCloudPlatform/practical-ml-vision-book/blob/master/06_preprocessing/06e_colordistortion.ipynb
 
-    efficiency of chained operations (jpg -> float, aug, float -> jpg)
+    maybe low efficiency of chained operations (jpg -> float, aug, float -> jpg)
     """
     def __init__(self,
                  brightness_delta=0.2,
@@ -64,11 +88,18 @@ class RandomColorDistortion(tf.keras.layers.Layer):
 
         images = tf.image.random_contrast(images, self.contrast_range[0], self.contrast_range[1])
         images = tf.image.random_brightness(images, self.brightness)
-        images = tf.image.random_hue(images, self.hue)
+        # images = tf.image.random_hue(images, self.hue)  # todo off for now @AH
         images = tf.image.random_saturation(images, self.saturation_range[0], self.saturation_range[1])
         images = tf.clip_by_value(images, 0, 255)
         return images
 
     def get_config(self, *args, **kwargs):
-        # borderline cheating
-        return super(RandomColorDistortion, self).get_config(*args, **kwargs)
+        # return super(RandomColorDistortion, self).get_config(*args, **kwargs)  # baseline
+        return {
+            'brightness_delta': self.brightness,
+            'contrast_range': self.contrast_range,
+            'hue_delta': self.hue,
+            'saturation_range': self.saturation_range,
+        }
+
+    # from_config() needs not to be overriden=reimplemented

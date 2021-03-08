@@ -41,7 +41,7 @@ def draw_cross(img, center_pos, line_length=20, color=(255, 0, 0), width=8):
 
 
 if __name__ == '__main__':
-
+    print('Showing annotated images.')
     show_images = True
     save_images = not show_images
 

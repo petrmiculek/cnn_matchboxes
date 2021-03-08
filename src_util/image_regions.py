@@ -2,6 +2,7 @@ import csv
 import pathlib
 import os
 import random
+import argparse
 
 import cv2 as cv
 import numpy as np
@@ -29,6 +30,7 @@ val = False
 # global parameters
 region_side = 64
 scale = 0.50
+bg_samples = 500  # per photo background locations
 
 params_suffix = '_{}_{:03d}'.format(region_side, int(scale * 100))
 
@@ -102,6 +104,41 @@ def euclid_dist(pos1, pos2):
 
 if __name__ == '__main__':
 
+    # parse args
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('--foreground', '-f',
+                        help="create foreground=keypoint samples",
+                        action='store_true')
+
+    parser.add_argument('--background', '-b',
+                        help="create background samples",
+                        action='store_true')
+
+    parser.add_argument('--smaller_radius', '-s',
+                        help="generate background samples closer to the image center",
+                        action='store_true')
+    parser.add_argument('--val', '-v',
+                        help="use validation data (instead of training)",
+                        action='store_true')
+
+    # todo cutout size, bg_samples
+
+    args = parser.parse_args()
+
+    val = args.val
+    do_background = args.background
+    do_foreground = args.foreground
+
+    padding = (4032 * scale) // 3
+    # radius -> full image, padding -> center
+    if args.smaller_radius:
+        cutout_padding = padding
+        shift_top = 500
+    else:
+        cutout_padding = radius
+        shift_top = 0
+
     if not os.path.isdir(output_folder):
         os.makedirs(output_folder, exist_ok=True)
 
@@ -143,14 +180,6 @@ if __name__ == '__main__':
             category = 'background'
             if not os.path.isdir(output_folder + os.sep + category):
                 os.makedirs(output_folder + os.sep + category, exist_ok=True)
-
-            padding = img.shape[0] // 3
-
-            # more params
-            cutout_padding = radius  # radius -> full image, padding -> center
-            shift_top = 0  # 500
-            bg_samples = 100
-            # ====
 
             repeated = 0  # counter
             # save background positions to a csv file (same structure as keypoints)

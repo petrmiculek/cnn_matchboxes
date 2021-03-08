@@ -15,7 +15,6 @@ from contextlib import redirect_stdout
 
 # external libs
 import tensorflow as tf
-from tensorflow.keras.utils import plot_model
 
 import cv2 as cv
 import numpy as np
@@ -31,10 +30,12 @@ from datasets import get_dataset
 from show_results import visualize_results, predict_full_image, show_layer_activations, heatmaps_all
 from src_util.labels import load_labels
 from src_util.general import safestr, DuplicateStream
+from logging_results import log_model_info
 
 if __name__ == '__main__':
-
-    data_dir = 'image_regions_64_050'
+    train = True
+    training_sample_dim = 64
+    data_dir = 'image_regions_{}_050'.format(training_sample_dim)
     checkpoint_path = '/tmp/checkpoint'
 
     time = safestr(datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
@@ -51,15 +52,18 @@ if __name__ == '__main__':
     num_classes = len(class_names)
 
     """ Create/Load a model """
-    base_model, model, data_augmentation, callbacks = models.get_model(models.fcn_residual_1, num_classes,
-                                                                       name_suffix=time, logs_dir=logs_dir,
-                                                                       augment=True, checkpoint_path=checkpoint_path)
+    if train:
+        base_model, model, data_augmentation, callbacks = models.build_model(models.dilated_1, num_classes,
+                                                                             name_suffix=time, logs_dir=logs_dir,
+                                                                             augment=False, checkpoint_path=checkpoint_path)
+    else:
+        models.load_model()
 
     """ Model outputs dir """
-    output_location = os.path.join('outputs', model.name)
+    output_location = os.path.join('outputs', model.name + '_re-loaded' * (not train))
     if not os.path.isdir(output_location):
         os.makedirs(output_location, exist_ok=True)
-    plot_model(base_model, os.path.join(output_location, base_model.name + "_architecture.png"), show_shapes=True)
+    log_model_info(model, output_location)
 
     stdout = sys.stdout
     out_stream = open(os.path.join(output_location, 'stdout.txt'), 'w')
@@ -72,26 +76,28 @@ if __name__ == '__main__':
 
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
     epochs_trained = 0
-    epochs = 100
 
-    """ Train the model"""
-    history = model.fit(
-        train_ds,
-        validation_data=val_ds,
-        validation_freq=5,
-        epochs=(epochs + epochs_trained),
-        initial_epoch=epochs_trained,
-        callbacks=callbacks,
-        class_weight=class_weights,
-        verbose=2  # one line per epoch
-    )
-    epochs_trained += epochs
-    model.load_weights(checkpoint_path)
+    if train:
+        epochs = 100
 
-    # base_model.load_weights('models_saved/tff_w128_l18augTrue_20210224183906')
-    # base_model.load_weights('models_saved/residual_20210305142236_full')
-    # raise ValueError()
-    base_model.save_weights(os.path.join('models_saved', model.name))
+        """ Train the model"""
+        history = model.fit(
+            train_ds,
+            validation_data=val_ds,
+            validation_freq=5,
+            epochs=(epochs + epochs_trained),
+            initial_epoch=epochs_trained,
+            callbacks=callbacks,
+            class_weight=class_weights,
+            verbose=2  # one line per epoch
+        )
+        epochs_trained += epochs
+
+        model.load_weights(checkpoint_path)  # checkpoint
+        base_model.save_weights(os.path.join('models_saved', model.name))
+
+        # base_model.load_weights('models_saved/residual_20210305142236_full')
+        # raise ValueError()
 
     """Evaluate model"""
     # output_location = None  # do-not-save flag

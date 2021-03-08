@@ -6,10 +6,12 @@ import numpy as np
 
 
 def get_class_weights(class_counts_train):
+    # todo equation
+    class_counts_train = np.array(class_counts_train)
     num_classes = len(class_counts_train)
     class_counts_sum = np.sum(class_counts_train)
-    class_counts_train = class_counts_sum / (num_classes * class_counts_train)
-    return dict(zip(range(0, num_classes), class_counts_train))
+    class_weights = class_counts_sum / (num_classes * class_counts_train)
+    return dict(enumerate(class_weights))
 
 
 def get_dataset(data_dir):
@@ -48,23 +50,16 @@ def get_dataset(data_dir):
     batch_size = 32
 
     dataset = tf.data.Dataset.list_files(os.path.join(data_dir, '*/*.jpg'), shuffle=False)
-    image_count = len(list(dataset))  # total (train + validation)
+    image_count = len(list(dataset))
 
     dataset = dataset.shuffle(image_count, reshuffle_each_iteration=False, seed=const_seed)
 
     """Compile a `class_names` list from the tree structure of the files."""
     data_dir_path = pathlib.Path(data_dir)
     class_names = np.array(sorted([item.name for item in data_dir_path.glob('*') if os.path.isdir(item)]))
-    num_classes = len(class_names)  # total (train + validation)
-
-    """Split training and validation"""
-    # val_size = int(image_count * 0.2)
-    # train_ds = dataset.skip(val_size)
-    # val_ds = dataset.take(val_size)
-
-    autotune = tf.data.experimental.AUTOTUNE
 
     # map to labels, etc
+    autotune = tf.data.experimental.AUTOTUNE
     dataset = dataset.map(process_path, num_parallel_calls=autotune)
 
     _, class_counts = np.unique(np.array(list(dataset), dtype='object')[:, 1], return_counts=True)

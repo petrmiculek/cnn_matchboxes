@@ -12,28 +12,42 @@ import util
 from src_util.general import safestr
 
 
-def get_model(model_factory, num_classes=8, name_suffix='', logs_dir='logs/unknown', checkpoint_path='/tmp/checkpoint', augment=True):
+def load_model():
+    # model = tf.keras.models.model_from_json(config)
+    # model.build(input_shape=(training_sample_dim, training_sample_dim, 3))
+    # if len(model.layers) == 2:
+    #     data_augmentation = model.layers[0]
+    #     base_model = model.layers[1]
+
+    pass
+
+
+def build_model(model_factory, num_classes=8, name_suffix='', logs_dir='logs/unknown', checkpoint_path='/tmp/checkpoint', augment=True):
     base_model = model_factory(num_classes, name_suffix=name_suffix)
-    base_model.summary()
 
     data_augmentation = tf.keras.Sequential(name='aug_only')
     data_augmentation.add(Input(shape=(64, 64, 3)))
     if augment:
         data_augmentation.add(RandomFlip("horizontal"))
         data_augmentation.add(RandomRotation(1 / 8, fill_mode='reflect'))
-        data_augmentation.add(util.RandomColorDistortion())  # todo next without distortion + with (but no hue shift)
+        # data_augmentation.add(util.RandomColorDistortion())
     data_augmentation.add(CenterCrop(32, 32))
 
     model = tf.keras.Sequential([data_augmentation, base_model], name=base_model.name + '_full')
     scce_loss = tf.losses.SparseCategoricalCrossentropy(from_logits=False)
     accu = util.Accu(name='accu')  # ~= SparseCategoricalAccuracy
+    prec = util.Precision(name='prec')
+    recall = util.Recall(name='recall')
 
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
         loss=scce_loss,
         metrics=[accu,
+                 prec,
+                 recall,
                  # tf.keras.metrics.SparseCategoricalCrossentropy(from_logits=True, name='t'),
                  # tf.keras.metrics.SparseCategoricalCrossentropy(from_logits=False, name='f'),
+                 # tf.keras.metrics.AUC(name='auc'),
                  ])
 
     # lr_sched = LearningRateScheduler(util.lr_scheduler)
@@ -87,8 +101,9 @@ def dilated_1(num_classes, name_suffix=''):
         x = BatchNormalization()(x)
         x = Conv2D(width, 3, **conv_args, dilation_rate=i)(x)
 
-        x = BatchNormalization()(x)
-        x = Conv2D(width, 3, activation='relu', padding='same', kernel_initializer=he_norm)(x)
+        if non_cropping_conv:
+            x = BatchNormalization()(x)
+            x = Conv2D(width, 3, activation='relu', padding='same', kernel_initializer=he_norm)(x)
 
         x = MaxPool2D(pool_size=2, strides=1, padding='same')(x)
         x = add([x, y])
