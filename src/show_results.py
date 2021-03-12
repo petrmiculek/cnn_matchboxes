@@ -153,10 +153,13 @@ def visualize_results(model, dataset, class_names, epochs_trained,
     undecided = len(maxes[maxes <= 0.125])
 
     accuracy = 100.0 * (1 - len(false_predictions) / len(predictions))
+    if val:
+        print('validation:')
+
     print('Accuracy: {0:0.2g}%'.format(accuracy))
     print('Prediction types:\n',
-           '\tConfident: {}\n'.format(confident),
-           '\tUndecided: {}'.format(undecided))
+          '\tConfident: {}\n'.format(confident),
+          '\tUndecided: {}'.format(undecided))
 
     return accuracy
 
@@ -173,7 +176,27 @@ def visualize_results(model, dataset, class_names, epochs_trained,
     """
 
 
-def get_image_as_batch(img_path, scale=1.0, center_crop_fraction=0.5):
+def heatmaps_all(model, class_names, val=True,
+                 undecided_only=False, maxes_only=False, output_location=None, show=True):
+    labels_dir = 'sirky' + '_val' * val
+    labels = load_labels(labels_dir + os.sep + 'labels.csv', use_full_path=False, keep_bg=False)
+
+    if output_location:
+        output_location = os.path.join(output_location, 'heatmaps')
+        os.makedirs(output_location, exist_ok=True)
+
+    for file in list(labels):
+        predict_full_image(model, class_names,
+                           labels,
+                           img_path=labels_dir + os.sep + file,
+                           output_location=output_location,
+                           show=show,
+                           undecided_only=undecided_only,
+                           maxes_only=maxes_only,
+                           )
+
+
+def get_image_as_batch(img_path, scale=1.0, center_crop_fraction=1.0):
     """Open and Process image
 
     :param center_crop_fraction:
@@ -181,12 +204,16 @@ def get_image_as_batch(img_path, scale=1.0, center_crop_fraction=0.5):
     :param scale:
     :return:
     """
-    img = cv.imread(img_path)
-    h, w, _ = img.shape  # don't use after resizing
-    low = (1 - center_crop_fraction) / 2
-    high = (1 + center_crop_fraction) / 2
 
-    img = img[int(h * low): int(h * high), int(w * low): int(w * high), :]  # cut out from center
+    img = cv.imread(img_path)
+
+    if center_crop_fraction != 1.0:
+        # crop from center
+        low = (1 - center_crop_fraction) / 2
+        high = (1 + center_crop_fraction) / 2
+        img = img[int(img.shape[0] * low): int(img.shape[0] * high),
+                  int(img.shape[1] * low): int(img.shape[1] * high),
+                  :]
 
     img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
     img = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))  # reversed indices, OK
@@ -195,7 +222,7 @@ def get_image_as_batch(img_path, scale=1.0, center_crop_fraction=0.5):
 
 
 def make_prediction(model, img, maxes_only=False, undecided_only=False):
-    """Make
+    """Make full-image prediction
 
     :param model:
     :param img: img as batch
@@ -227,8 +254,117 @@ def make_prediction(model, img, maxes_only=False, undecided_only=False):
     return predictions
 
 
+def full_img_pred_error(predictions, img_path, labels, class_names, model, model_crop_delta):
+    """Calculate error metric for full-image prediction
+
+    todo work with prediction probability instead of argmax?
+
+    non-background: nejbližší keypoint dané třídy -> dist == loss
+
+    background: 0.0, pokud je více než K pixelů daleko od libovolného nejbližšího keypointu
+                jinak pevná penalty
+
+    """
+    min_dist_background = 5.0
+    min_dist_background_penalty = 10.0
+    no_such_cat_penalty = 250.0
+
+    # todo moved rescale
+
+    # filter only labels for given image
+    file_labels = deepcopy([val for filename, val in labels.items() if
+                            filename in img_path])  # key in img_name, because img_name contains full path
+
+    if len(file_labels) != 1:
+        raise Exception('invalid labels for file {}\n{}'.format(img_path, file_labels))
+
+    file_labels = file_labels[0]
+
+    # todo all ^ can be moved too
+
+    # file_labels = rescale_file_labels(file_labels)
+    file_labels_merged = np.vstack([v for v in file_labels.values()])
+
+    # make prediction one-hot over channels
+    p_argmax = np.argmax(predictions, axis=2)
+
+    # grid for calculating distances
+
+    grid = np.meshgrid(np.arange(predictions.shape[1]), np.arange(predictions.shape[0]))
+    grid = np.vstack([grid])
+    grid = np.transpose(grid, (1, 2, 0))
+
+    category_losses = {}
+
+    # background
+    bg_mask = np.where(p_argmax == 0, True, False)  # 2D mask
+    bg_list = grid[bg_mask]  # list of 2D coords
+    uniq = np.unique(bg_list, axis=0)
+    if len(uniq) != len(bg_list):
+        print(f'uniq {len(uniq)} / {len(bg_list)}')
+
+    per_pixel_distances = cdist(bg_list, file_labels_merged)
+    per_pixel_loss = np.min(per_pixel_distances, axis=1)
+    penalized = per_pixel_loss[per_pixel_loss < min_dist_background]
+    category_losses['background'] = min_dist_background_penalty * len(penalized)
+
+    # keypoint categories
+    for i in range(1, len(class_names)):  # skip 0 == background
+        cat = class_names[i]
+
+        # filter predictions of given category
+        cat_list = grid[p_argmax == i]
+        # cat_mask = np.where(p_argmax == i, True, False)  # 2D mask
+
+        if cat not in file_labels:  # no GT labels of this category
+            # predicted non-present category
+            category_losses[cat] = len(cat_list) * no_such_cat_penalty
+            print(f'{cat} not in {img_path} -> {category_losses[cat]}')
+            continue
+
+        # distance of each predicted point to each GT label
+        per_pixel_distances = np.square(cdist(cat_list, np.array(file_labels[cat])))
+        per_pixel_loss = np.min(per_pixel_distances, axis=1)
+
+        category_losses[cat] = np.sum(per_pixel_loss)
+
+    loss_values_only = list(category_losses.values())
+    loss_sum = np.sum(loss_values_only)
+
+    # log to csv
+    log_full_img_pred_losses(model.name, img_path, loss_sum, loss_values_only)
+
+    return loss_sum, \
+           [str(cat) + ': 1e{0:0.2g}'.format(log10(loss + 1)) for cat, loss in category_losses.items()]
+
+
+def crop_to_prediction(img, pred):
+    model_crop_delta = img.shape[0] - pred.shape[0]
+    low = floor(model_crop_delta / 2)
+    high = ceil(model_crop_delta / 2)
+
+    return img[low:-high, low:-high], model_crop_delta
+
+
+def rescale_file_labels(file_labels, scale, model_crop_delta, center_crop_fraction):
+    # todo test function: show annotations on a scaled-down image
+
+    new = dict()
+    for cat, labels in file_labels.items():
+        new_l = []
+        for pos in labels:
+            # todo leaving this for today - check computation
+            p = int(pos[0]) * scale, int(pos[1]) * scale
+            p = (p[0] - center_crop_fraction) // 2, (p[1] - center_crop_fraction) // 2
+            p = p[0] - model_crop_delta // 2, p[1] - model_crop_delta // 2  # todo I think it's // 2
+            new_l.append(p)
+        new[cat] = new_l
+
+    return new
+
+
 def predict_full_image(model, class_names, labels, img_path, output_location=None,
-                       heatmap_alpha=0.6, show=True, maxes_only=False, undecided_only=False):
+                       show=True, maxes_only=False, undecided_only=False):
     """Show predicted heatmaps for full image
 
     :param labels:
@@ -243,14 +379,16 @@ def predict_full_image(model, class_names, labels, img_path, output_location=Non
     """
 
     scale = 0.5
+    center_crop_fraction = 0.5
 
-    img = get_image_as_batch(img_path, scale)
+    img = get_image_as_batch(img_path, scale, center_crop_fraction)
 
     predictions = make_prediction(model, img, maxes_only, undecided_only)
     img = img[0]  # remove batch dimension
 
+    model_crop_delta = img.shape[0] - pred.shape[0]
     # Model prediction is "cropped", adjust image accordingly
-    img = img[15:-16, 15:-16]  # warning, depends on model cutout size (only works for 32x)
+    img, model_crop_delta = crop_to_prediction(img, predictions)
 
     category_titles = class_names
 
@@ -259,27 +397,31 @@ def predict_full_image(model, class_names, labels, img_path, output_location=Non
     elif maxes_only:
         plots_title = 'maxes'
     else:
-        losses_sum, category_losses = full_img_pred_error(predictions, img_path, img, labels, class_names, model.name)
+
+        labels = rescale_file_labels(labels, scale, model_crop_delta, center_crop_fraction)  # todo must get file labels only
+        losses_sum, category_losses = full_img_pred_error(predictions, img_path, labels, class_names, model,
+                                                          model_crop_delta)
         category_titles = category_losses
         plots_title = str(losses_sum // 1e6) + 'M'
 
+    # plots_title = ''
+
     display_predictions(predictions, img, img_path, category_titles, plots_title,
-                        heatmap_alpha, show=show, output_location=output_location)
+                        show=show, output_location=output_location, superimpose=True)
 
 
-def display_predictions(predictions, img, img_path, class_names, title='', heatmap_alpha=0.6, show=True,
+def display_predictions(predictions, img, img_path, class_names, title='', heatmap_alpha=0.7, show=True,
                         output_location=None, superimpose=False):
     # Plot predictions as heatmaps superimposed on input image
     # predictions = np.square(predictions)  # todo note down comparison y/n
     predictions = np.uint8(255 * predictions)
     class_activations = []
 
-    print(predictions.shape)
     for i in range(8):
         pred = np.stack((predictions[:, :, i],) * 3, axis=-1)  # 2d to grayscale (R=G=B)
         pred = cv.applyColorMap(pred, cv.COLORMAP_VIRIDIS)
+        pred = cv.cvtColor(pred, cv.COLOR_BGR2RGB)
         if superimpose:
-            pred = cv.cvtColor(pred, cv.COLOR_BGR2RGB)
             pred = cv.addWeighted(pred, heatmap_alpha, img, 1 - heatmap_alpha, gamma=0)
         class_activations.append(pred)
 
@@ -404,11 +546,11 @@ def show_layer_activations(model, data_augmentation, ds, class_names, show=True,
 
                 channel_image = np.clip(channel_image, 0, 255).astype('uint8')
                 display_grid[col * size: (col + 1) * size,
-                             row * size: (row + 1) * size] = channel_image
+                row * size: (row + 1) * size] = channel_image
 
         scale = 1. / size
         fig = plt.figure(figsize=(scale * display_grid.shape[1],
-                            scale * display_grid.shape[0]))
+                                  scale * display_grid.shape[0]))
         plt.title(layer_name)
         plt.grid(False)
         plt.imshow(display_grid, aspect='auto', cmap='viridis', vmin=0, vmax=255)
@@ -422,120 +564,6 @@ def show_layer_activations(model, data_augmentation, ds, class_names, show=True,
         plt.close(fig.figure)
 
         # print(f'{layer_name}: {out_of_range_count=} / {total_count}')
-
-
-def heatmaps_all(model, class_names, val=True,
-                 undecided_only=False, maxes_only=False, output_location=None, show=True):
-    labels_dir = 'sirky' + '_val' * val
-    labels = load_labels(labels_dir + os.sep + 'labels.csv', use_full_path=False, keep_bg=False)
-
-    if output_location:
-        output_location = os.path.join(output_location, 'heatmaps')
-        os.makedirs(output_location, exist_ok=True)
-
-    for file in list(labels):
-        predict_full_image(model, class_names,
-                           labels,
-                           img_path=labels_dir + os.sep + file,
-                           output_location=output_location,
-                           show=show,
-                           undecided_only=undecided_only,
-                           maxes_only=maxes_only,
-                           )
-
-
-def full_img_pred_error(predictions, img_path, img, labels, class_names, model_name):
-    """Calculate error metric for full-image prediction
-
-    todo work with prediction probability instead of argmax?
-
-    non-background: nejbližší keypoint dané třídy -> dist == loss
-
-    background: 0.0, pokud je více než K pixelů daleko od libovolného nejbližšího keypointu
-                jinak pevná penalty
-
-    # unused
-    # xxyy = np.mgrid[0:img.shape[1], 0:img.shape[0]]
-
-    """
-    min_dist_background = 5.0
-    min_dist_background_penalty = 10.0
-    no_such_cat_penalty = 250.0
-
-    def rescale_file_labels(file_labels):
-        # todo test function: show annotations on a scaled-down image
-        new = dict()
-        for cat, l in file_labels.items():
-            new_l = []
-            for item in l:
-                new_l.append(((int(item[0]) // 2 - 504 - 15), (int(item[1]) // 2 - 378 - 15)))
-            new[cat] = new_l
-
-        return new
-
-    # filter only labels for given image
-    file_labels = deepcopy([val for filename, val in labels.items() if
-                            filename in img_path])  # key in img_name, because img_name contains full path
-
-    if len(file_labels) != 1:
-        print('invalid labels for file {}\n{}'.format(img_path, file_labels), file=sys.stderr)
-        return float('NaN')
-
-    file_labels = file_labels[0]
-    file_labels = rescale_file_labels(file_labels)
-    file_labels_merged = np.vstack([v for v in file_labels.values()])
-
-    # make prediction one-hot over channels
-    p_argmax = np.argmax(predictions, axis=2)
-
-    # grid for calculating distances
-    grid = np.meshgrid(np.arange(img.shape[1]), np.arange(img.shape[0]))
-    grid = np.vstack([grid])
-    grid = np.transpose(grid, (1, 2, 0))
-
-    category_losses = {}
-
-    # background
-    bg_mask = np.where(p_argmax == 0, True, False)  # 2D mask
-    bg_list = grid[bg_mask]  # list of 2D coords
-    uniq = np.unique(bg_list, axis=0)
-    if len(uniq) != len(bg_list):
-        print(f'uniq {len(uniq)} / {len(bg_list)}')
-
-    per_pixel_distances = cdist(bg_list, file_labels_merged)
-    per_pixel_loss = np.min(per_pixel_distances, axis=1)
-    penalized = per_pixel_loss[per_pixel_loss < min_dist_background]
-    category_losses['background'] = min_dist_background_penalty * len(penalized)
-
-    # keypoint categories
-    for i in range(1, len(class_names)):  # skip 0 == background
-        cat = class_names[i]
-
-        # filter predictions of given category
-        cat_list = grid[p_argmax == i]
-        # cat_mask = np.where(p_argmax == i, True, False)  # 2D mask
-        # cat_grid = None  # todo ended here
-
-        if cat not in file_labels:  # no GT labels of this category
-            # predicted non-present category
-            category_losses[cat] = len(cat_list) * no_such_cat_penalty
-            print(f'{cat} not in {img_path} -> {category_losses[cat]}')
-            continue
-
-        # distance of each predicted point to each GT label
-        per_pixel_distances = np.square(cdist(cat_list, np.array(file_labels[cat])))
-        per_pixel_loss = np.min(per_pixel_distances, axis=1)
-
-        category_losses[cat] = np.sum(per_pixel_loss)
-
-    loss_values_only = list(category_losses.values())
-    loss_sum = np.sum(loss_values_only)
-
-    # log to csv
-    log_full_img_pred_losses(model_name, img_path, loss_sum, loss_values_only)
-
-    return loss_sum,\
-        [str(cat) + ': 1e{0:0.2g}'.format(log10(loss + 1)) for cat, loss in category_losses.items()]
 
 
 def error_location(predictions, img, file_labels, class_names):
@@ -552,6 +580,7 @@ def error_location(predictions, img, file_labels, class_names):
     inspiration for grid operations (N-th answer):
     https://stackoverflow.com/questions/36013063/what-is-the-purpose-of-meshgrid-in-python-numpy
     """
+
     def dst_pt2grid(pt):
         return np.hypot(gx - pt[0], gy - pt[1])
 
@@ -599,19 +628,16 @@ def show_augmentation(data_augmentation, dataset):
             for batch in list(dataset)
             for img in batch[0]]
 
-    # replaced by comprehension above
-    # for batch in list(dataset):
-    #     imgs.append(batch[0].numpy())
-
     imgs = np.vstack([imgs])  # -> 4D [img_count x width x height x channels]
 
     """Make predictions"""
     pred = data_augmentation(tf.convert_to_tensor(imgs, dtype=tf.uint8), training=True)
 
-    half_dim = imgs.shape[2] // 2
+    low = 1 * imgs.shape[2] // 4
+    high = 3 * imgs.shape[2] // 4
 
     # Center-crop regions (64x to 32x)
-    imgs = imgs[:, half_dim - 16: half_dim + 16, half_dim - 16: half_dim + 16, :]
+    imgs = imgs[:, low:high, low:high, :]
 
     # alternatively, resize to 1/2 inside the loop below, once merged (B, W, H, C) -> (B*W, H, C)
     # imgs_col = cv.resize(imgs_col, None, fx=0.5, fy=0.5)

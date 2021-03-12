@@ -1,76 +1,150 @@
-import tensorflow as tf
-from tensorflow.keras.layers import \
-    add, Conv2D, BatchNormalization, Softmax, Input, MaxPool2D, Cropping2D
-from tensorflow.keras.layers.experimental.preprocessing import \
-    CenterCrop, RandomFlip, RandomRotation
-from tensorflow.keras.callbacks import \
-    TensorBoard, ReduceLROnPlateau, \
-    LearningRateScheduler, ModelCheckpoint
-import numpy as np
+import os
 from math import log2, ceil
 import util
+
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.layers import \
+    add, Conv2D, BatchNormalization, Softmax, Input, MaxPool2D, Cropping2D, Concatenate, AvgPool2D
+from tensorflow.keras.layers.experimental.preprocessing import \
+    CenterCrop, RandomFlip, RandomRotation
+
 from src_util.general import safestr
 
 
-def load_model():
-    # model = tf.keras.models.model_from_json(config)
-    # model.build(input_shape=(training_sample_dim, training_sample_dim, 3))
-    # if len(model.layers) == 2:
-    #     data_augmentation = model.layers[0]
-    #     base_model = model.layers[1]
+def augmentation(aug=True, crop_to=64):
+    aug_model = tf.keras.Sequential(name='augmentation')
+    aug_model.add(Input(shape=(64, 64, 3)))
 
-    pass
+    if aug:
+        aug_model.add(RandomFlip("horizontal"))
+        aug_model.add(RandomRotation(1 / 8))  # =rot45°, fill_mode='reflect' needed?
+        aug_model.add(util.RandomColorDistortion())
+
+    if crop_to != 64:
+        aug_model.add(CenterCrop(crop_to, crop_to))
+
+    return aug_model
 
 
-def build_model(model_factory, num_classes=8, name_suffix='', logs_dir='logs/unknown', checkpoint_path='/tmp/checkpoint', augment=True):
-    base_model = model_factory(num_classes, name_suffix=name_suffix)
+def residual_32x_31l_concat(num_classes, name_suffix=''):
+    he_norm = tf.keras.initializers.he_normal()
+    conv_args = {
+        'activation': 'relu',
+        'padding': 'valid',
+        'kernel_initializer': he_norm
+    }
+    width = 64
 
-    data_augmentation = tf.keras.Sequential(name='aug_only')
-    data_augmentation.add(Input(shape=(64, 64, 3)))
-    if augment:
-        data_augmentation.add(RandomFlip("horizontal"))
-        data_augmentation.add(RandomRotation(1 / 8, fill_mode='reflect'))
-        # data_augmentation.add(util.RandomColorDistortion())
-    data_augmentation.add(CenterCrop(32, 32))
+    x = Input(shape=(None, None, 3))
+    input_layer = x
 
-    model = tf.keras.Sequential([data_augmentation, base_model], name=base_model.name + '_full')
-    scce_loss = tf.losses.SparseCategoricalCrossentropy(from_logits=False)
-    accu = util.Accu(name='accu')  # ~= SparseCategoricalAccuracy
-    prec = util.Precision(name='prec')
-    recall = util.Recall(name='recall')
+    x = Conv2D(width, 3, **conv_args)(x)
 
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
-        loss=scce_loss,
-        metrics=[accu,
-                 prec,
-                 recall,
-                 # tf.keras.metrics.SparseCategoricalCrossentropy(from_logits=True, name='t'),
-                 # tf.keras.metrics.SparseCategoricalCrossentropy(from_logits=False, name='f'),
-                 # tf.keras.metrics.AUC(name='auc'),
-                 ])
+    for i in range(14):
+        y = Cropping2D(cropping=((1, 1), (1, 1)))(x)
 
-    # lr_sched = LearningRateScheduler(util.lr_scheduler)
-    reduce_lr = ReduceLROnPlateau(monitor='accu', factor=0.2,
-                                  patience=10, min_lr=1e-7)
+        x = BatchNormalization()(x)
+        x = Conv2D(width, 3, **conv_args)(x)
 
-    tensorboard_callback = TensorBoard(logs_dir, histogram_freq=1, profile_batch='300,400')
-    model_checkpoint_callback = ModelCheckpoint(
-        filepath=checkpoint_path,
-        save_weights_only=True,
-        monitor='val_accu',
-        mode='max',
-        save_best_only=True)
+        x = Concatenate()([x, y])
+        x = Conv2D(width, 1, **conv_args)(x)
 
-    callbacks = [
-        tensorboard_callback,
-        # tf.keras.callbacks.EarlyStopping(monitor='accu', patience=10),
-        # lr_sched,
-        reduce_lr,
-        model_checkpoint_callback
-    ]
+    x = BatchNormalization()(x)
+    x = Conv2D(width, 2, **conv_args)(x)
 
-    return base_model, model, data_augmentation, callbacks
+    x = BatchNormalization()(x)
+    x = Conv2D(num_classes, 1, kernel_initializer=he_norm)(x)  # no activation
+
+    x = Softmax()(x)
+
+    model = tf.keras.Model(inputs=input_layer, outputs=x,
+                           name='residual_concat_32x_31l_' + name_suffix)
+    return model, 32
+
+
+
+def residual_32x_17l_concat(num_classes, name_suffix=''):
+    he_norm = tf.keras.initializers.he_normal()
+    conv_args = {
+        'activation': 'relu',
+        'padding': 'valid',
+        'kernel_initializer': he_norm
+    }
+    width = 64
+
+    x = Input(shape=(None, None, 3))  # None, None
+    input_layer = x
+
+    x = Conv2D(width, 3, **conv_args)(x)
+
+    for i in range(7):
+        y = Cropping2D(cropping=((2, 2), (2, 2)))(x)
+
+        x = BatchNormalization()(x)
+        x = Conv2D(width, 3, **conv_args, dilation_rate=2)(x)
+
+        x = Concatenate()([x, y])
+        x = Conv2D(width, 1, **conv_args)(x)
+
+    x = BatchNormalization()(x)
+    x = Conv2D(width, 2, **conv_args)(x)
+
+    x = BatchNormalization()(x)
+    x = Conv2D(num_classes, 1, kernel_initializer=he_norm)(x)  # no activation
+
+    x = Softmax()(x)
+
+    model = tf.keras.Model(inputs=input_layer, outputs=x,
+                           name='residual_concat_32x_31l_' + name_suffix)
+    return model, 32
+
+
+def residual_64x(num_classes, name_suffix=''):
+    """
+    March 9
+    :param num_classes:
+    :param name_suffix:
+    :return:
+    """
+
+    he_norm = tf.keras.initializers.he_normal()
+    conv_args = {
+        'activation': 'relu',
+        'padding': 'valid',
+        'kernel_initializer': he_norm
+    }
+    width = 64
+
+    x = Input(shape=(None, None, 3))  # None, None
+    input_layer = x
+
+    # note: No BatchNorm
+
+    x = Conv2D(width, 3, activation='relu', padding='same', kernel_initializer=he_norm)(x)
+
+    for i in range(1, 16):
+        # skip-branch
+        y = Cropping2D(cropping=((2, 2), (2, 2)))(x)
+        y = Conv2D(width, 1, **conv_args)(y)
+
+        # main branch
+        x = BatchNormalization()(x)
+        x = Conv2D(width, 3, **conv_args, dilation_rate=2)(x)
+
+        if i % 4 == 1:  # 4x in total
+            x = MaxPool2D(pool_size=2, strides=1, padding='same')(x)
+
+        x = add([x, y])
+
+    x = Conv2D(128, 4, **conv_args)(x)
+
+    x = BatchNormalization()(x)
+    x = Conv2D(num_classes, 1, **conv_args)(x)  # todo relu before softmax
+    x = Softmax()(x)
+
+    model = tf.keras.Model(inputs=input_layer, outputs=x, name='residual_64x' + name_suffix)
+    return model, 64
 
 
 def dilated_1(num_classes, name_suffix=''):
@@ -93,6 +167,7 @@ def dilated_1(num_classes, name_suffix=''):
     x = Input(shape=(None, None, 3))  # None, None
     input_layer = x
 
+    # Note: No BatchNorm
     x = Conv2D(width, 3, activation='relu', padding='same', kernel_initializer=he_norm)(x)
 
     for i in range(1, 6):
@@ -108,6 +183,7 @@ def dilated_1(num_classes, name_suffix=''):
         x = MaxPool2D(pool_size=2, strides=1, padding='same')(x)
         x = add([x, y])
 
+    # Note: No BatchNorm
     x = Conv2D(width, 2, **conv_args)(x)
 
     x = BatchNormalization()(x)
@@ -115,7 +191,7 @@ def dilated_1(num_classes, name_suffix=''):
     x = Softmax()(x)
 
     model = tf.keras.Model(inputs=input_layer, outputs=x, name='dilated' + name_suffix)
-    return model
+    return model, 32
 
 
 def fcn_residual_1(num_classes, name_suffix=''):
@@ -133,13 +209,12 @@ def fcn_residual_1(num_classes, name_suffix=''):
 
     coef = 3
     width = 64
-    # width = 8
 
     input_layer = Input(shape=(None, None, 3))
     x = BatchNormalization()(input_layer)
     x = Conv2D(width, 3, **conv_args)(x)  # Makes width wide enough for addition inside skip module
 
-    for i in range(1, 8):
+    for i in range(7):
         # width = 1 << (i // 4 + coef)  # ceil(log2(i / 2))  # todo try widening again
         y = Cropping2D(cropping=((2, 2), (2, 2)))(x)
 
@@ -147,10 +222,10 @@ def fcn_residual_1(num_classes, name_suffix=''):
         x = Conv2D(width, 3, **conv_args)(x)
 
         x = BatchNormalization()(x)
-        x = Conv2D(width, 3, kernel_initializer=he_norm)(x)  # todo try again with **conv_args
+        x = Conv2D(width, 3, **conv_args)(x)
 
-        # if i % 2 == 0:  # todo try again
-        #     x = MaxPool2D(pool_size=(2, 2), strides=(1, 1), padding='same')(x)
+        # if i % 2 == 0:
+        #     x = AvgPool2D(pool_size=(2, 2), strides=(1, 1), padding='same')(x)
 
         # y = Conv2D(width, 1, **conv_args)(y)  # 1x1
         x = add([x, y])
@@ -162,12 +237,12 @@ def fcn_residual_1(num_classes, name_suffix=''):
     x = Conv2D(16 * 1 << coef, 1, **conv_args)(x)
 
     x = BatchNormalization()(x)
-    x = Conv2D(num_classes, 1, **conv_args)(x)
+    x = Conv2D(num_classes, 1, kernel_initializer=he_norm, activation=None)(x)
 
     x = Softmax()(x)
 
-    model = tf.keras.Model(inputs=input_layer, outputs=x, name='residual_' + name_suffix)
-    return model
+    model = tf.keras.Model(inputs=input_layer, outputs=x, name='residual_32x_64w_18l_' + name_suffix)
+    return model, 32
 
 
 def fcn_sequential(num_classes, name_suffix=''):
@@ -208,7 +283,7 @@ def fcn_sequential(num_classes, name_suffix=''):
     model.add(Conv2D(num_classes, 1, **conv_args))
 
     model.add(Softmax())
-    return model
+    return model, 32
 
 
 def fcn_maxpool_div(num_classes, weight_init_idx=0):
@@ -253,17 +328,17 @@ def fcn_maxpool_div(num_classes, weight_init_idx=0):
     model.add(Conv2D(num_classes, 1, activation='relu'))
     model.add(Softmax())
 
-    return model
+    return model, 32
 
 
-def conv_failed_attempt(num_classes, input_dim=(64, 64, 3)):
+def conv_failed_attempt(num_classes):
     """
     December
     does not train at all
 
     """
     c = 32
-    return tf.keras.Sequential([
+    model = tf.keras.Sequential([
         Input(shape=(None, None, 3)),
         experimental.preprocessing.Rescaling(1. / 255),
         Conv2D(c, 3, activation='relu'),
@@ -289,6 +364,7 @@ def conv_failed_attempt(num_classes, input_dim=(64, 64, 3)):
         Softmax(),
         Flatten()
     ], name='sequential_9Conv_{}channels'.format(c))
+    return model, 32
 
 
 def conv_6layers(num_classes, first_conv=32):
@@ -298,7 +374,7 @@ def conv_6layers(num_classes, first_conv=32):
     Is there a bottleneck in the model somewhere?
 
     """
-    return tf.keras.models.Sequential(
+    model = tf.keras.models.Sequential(
         [
             experimental.preprocessing.Rescaling(1. / 255),
 
@@ -322,6 +398,7 @@ def conv_6layers(num_classes, first_conv=32):
         ]
         , name='sequential_6conv_{}channels_doubling'.format(first_conv)
     )
+    return model, 64
 
 
 def conv_init(num_classes, first_conv=32):
@@ -330,7 +407,7 @@ def conv_init(num_classes, first_conv=32):
     Trying out He initialization has not shown improvements so far.
     """
     he = tf.keras.initializers.he_normal()
-    return tf.keras.models.Sequential(
+    model = tf.keras.models.Sequential(
         [
             experimental.preprocessing.Rescaling(1. / 255),
 
@@ -353,6 +430,7 @@ def conv_init(num_classes, first_conv=32):
         ]
         , name='sequential_6conv_{}channels_doubling'.format(first_conv)
     )
+    return model, 64
 
 
 def conv_tutorial(num_classes, input_dim=(64, 64, 3)):
@@ -363,7 +441,7 @@ def conv_tutorial(num_classes, input_dim=(64, 64, 3)):
 
     """
     c = 32  # 32
-    return tf.keras.Sequential([
+    model = tf.keras.Sequential([
         Input(shape=input_dim),
         experimental.preprocessing.Rescaling(1. / 255),
         Conv2D(c, 3, activation='relu', padding='same'),
@@ -381,31 +459,4 @@ def conv_tutorial(num_classes, input_dim=(64, 64, 3)):
         Dense(128, activation='relu'),
         Dense(num_classes, activation='softmax')
     ], name='sequential_3conv_{}channels'.format(c))
-
-
-def basic_conv_ablation(num_classes, input_dim=(32, 32, 3)):
-    """
-    March 4
-    """
-    c = 32  # 32
-    he_norm = tf.keras.initializers.he_normal()
-    conv_args = {
-        'activation': 'relu',
-        'padding': 'same',
-        'kernel_initializer': he_norm
-    }
-
-    return tf.keras.Sequential([
-        Input(shape=input_dim),
-        experimental.preprocessing.Rescaling(1. / 255),
-        Conv2D(c, 3, activation='relu', padding='same'),
-        MaxPooling2D(),
-
-        BatchNormalization(),
-        Conv2D(c, 3, activation='relu', padding='same'),
-        MaxPooling2D(),
-
-        Conv2D(8, 1, activation='relu', padding='same'),
-        MaxPooling2D(),
-        Softmax()
-    ], name='sequential_3conv_{}channels'.format(c))
+    return model, 64

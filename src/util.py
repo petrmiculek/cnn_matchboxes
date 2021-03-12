@@ -10,6 +10,12 @@ def pred_reshape(y_pred):
     return tf.reshape(y_pred, [tf.shape(y_pred)[0], tf.shape(y_pred)[3]])
 
 
+class Scce(tf.losses.SparseCategoricalCrossentropy):
+    def call(self, y_true, y_pred):
+        tf.print(tf.shape(y_true), y_pred)
+        return super(Scce, self).call(y_true, y_pred)
+
+
 class Accu(tf.metrics.SparseCategoricalAccuracy):
     def update_state(self, y_true, y_pred, sample_weight=None):
         # reshape prediction - keep only Batch and Class-probabilities dimensions
@@ -88,7 +94,7 @@ class RandomColorDistortion(tf.keras.layers.Layer):
 
         images = tf.image.random_contrast(images, self.contrast_range[0], self.contrast_range[1])
         images = tf.image.random_brightness(images, self.brightness)
-        # images = tf.image.random_hue(images, self.hue)  # todo off for now @AH
+        # images = tf.image.random_hue(images, self.hue)  # todo off for now
         images = tf.image.random_saturation(images, self.saturation_range[0], self.saturation_range[1])
         images = tf.clip_by_value(images, 0, 255)
         return images
