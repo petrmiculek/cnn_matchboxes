@@ -1,9 +1,24 @@
+import os
+import glob
+import shutil
 import tensorflow as tf
 
 """
 Model-related utility code
 (as opposed to non-model-related utility code in src_util)
 """
+
+
+def get_checkpoint_path(path='/tmp/model_checkpoints'):
+
+    files = glob.glob(os.path.join(path, '*'))
+    for f in files:
+        if os.path.isfile(f):
+            os.remove(f)
+        else:
+            shutil.rmtree(f)
+
+    return os.path.join(path, 'checkpoint')
 
 
 def pred_reshape(y_pred):

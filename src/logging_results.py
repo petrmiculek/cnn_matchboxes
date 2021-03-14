@@ -7,7 +7,7 @@ import tensorflow as tf
 from tensorflow.keras.utils import plot_model
 
 
-def log_model_info(model, output_location):
+def log_model_info(model, output_location=None):
     """Save model architecture plot (image) and model config (json)
 
     :param model:
@@ -27,8 +27,11 @@ def log_model_info(model, output_location):
 
     plot_model(base_model, os.path.join(output_location, base_model.name + "_architecture.png"), show_shapes=True)
 
-    with open(os.path.join(output_location, 'model_config.json'), mode='x') as json_out:
-        json_out.write(model.to_json())
+    try:
+        with open(os.path.join(output_location, 'model_config.json'), mode='x') as json_out:
+            json_out.write(model.to_json())
+    except FileExistsError:
+        print('Model config already exists, did not overwrite.')
 
 
 def log_full_img_pred_losses(model_name, img_path, losses_sum, category_losses):

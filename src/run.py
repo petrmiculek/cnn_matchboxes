@@ -36,13 +36,20 @@ from logging_results import log_model_info
 
 
 def run(model_builder, use_small_ds=True, augment=False, train=True):
-    # model_builder = models.fcn_residual_1
+    # model_builder = models.fcn_residual_32x_18l
     # train = True
 
     dim = 64  # training sample dim - not really
     scale = 0.5
-    data_dir = f'image_regions_{dim}_{int(100 * scale):03d}' + '_small' * use_small_ds
-    checkpoint_path = '/tmp/checkpoint'
+
+    # per image background samples
+    if use_small_ds:
+        bg_samples = 100
+    else:
+        bg_samples = 500
+
+    data_dir = f'image_regions_{dim}_{int(100 * scale):03d}_bg{bg_samples}'
+    checkpoint_path = util.get_checkpoint_path()
 
     time = safestr(datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
 
@@ -58,24 +65,24 @@ def run(model_builder, use_small_ds=True, augment=False, train=True):
 
     """ Create/Load a model """
     if train:
-        base_model, model, data_augmentation, callbacks = model_ops.build_model(model_builder, num_classes,
+        base_model, model, data_augmentation, callbacks = model_ops.build_new_model(model_builder, num_classes,
                                                                                 augment=augment, name_suffix=time,
-                                                                                checkpoint_path=checkpoint_path)
+                                                                                checkpoint_path=checkpoint_path, bg_samples=bg_samples)
     else:
         load_model_name = 'dilated20210309161954_full'  # trained on 500bg
         config = os.path.join('outputs', load_model_name, 'model_config.json')
         weights = os.path.join('models_saved', load_model_name)
 
-        base_model, model, data_augmentation = model_ops.load_model(config, weights)
-        callbacks = []
+        base_model, model, data_augmentation, callbacks = model_ops.load_model(config, weights)
 
     """ Model outputs dir """
+
     output_location = os.path.join('outputs', model.name + '_reloaded' * (not train))
     if not os.path.isdir(output_location):
         os.makedirs(output_location, exist_ok=True)
 
-    stdout = sys.stdout
-    out_stream = open(os.path.join(output_location, 'stdout.txt'), 'w')
+    stdout_orig = sys.stdout
+    out_stream = open(os.path.join(output_location, 'stdout.txt'), 'a')
     sys.stdout = DuplicateStream(sys.stdout, out_stream)
 
     log_model_info(model, output_location)
@@ -84,7 +91,7 @@ def run(model_builder, use_small_ds=True, augment=False, train=True):
     epochs_trained = 0
 
     if train:
-        epochs = 1
+        epochs = 50
 
         """ Train the model"""
         history = model.fit(
@@ -100,7 +107,8 @@ def run(model_builder, use_small_ds=True, augment=False, train=True):
         epochs_trained += epochs
 
         try:
-            model.load_weights(checkpoint_path)  # checkpoint
+            if epochs_trained > 5:
+                model.load_weights(checkpoint_path)  # checkpoint
         except NotFoundError:
             # might not be present if trained for <K epochs
             pass
@@ -109,25 +117,25 @@ def run(model_builder, use_small_ds=True, augment=False, train=True):
         # base_model.load_weights('models_saved/residual_20210305142236_full')
 
     """Evaluate model"""
-    output_location = None  # do-not-save flag
-    val_accu = visualize_results(model, val_ds, class_names, epochs_trained, output_location=output_location, show=True, misclassified=True, val=True)
-    visualize_results(model, train_ds, class_names, epochs_trained, output_location=output_location, show=True)
+    show = False
+    # output_lo cation = None  # do-not-save flag
+    val_accu = visualize_results(model, val_ds, class_names, epochs_trained, output_location=output_location, show=show, misclassified=True, val=True)
+    visualize_results(model, train_ds, class_names, epochs_trained, output_location=output_location, show=show)
 
     if val_accu < 80.0:  # %
         print('Val accu too low:', val_accu)
         # sys.exit(0)
 
     """Full image prediction"""
-    heatmaps_all(base_model, class_names, val=True, output_location=output_location)
-    heatmaps_all(base_model, class_names, val=False, output_location=output_location, show=True)
+    heatmaps_all(base_model, class_names, val=True, output_location=output_location, show=show)
+    heatmaps_all(base_model, class_names, val=False, output_location=output_location, show=show)
 
     """Per layer activations"""
-    show_layer_activations(base_model, data_augmentation, val_ds, class_names, show=False, output_location=output_location)
+    show_layer_activations(base_model, data_augmentation, val_ds, class_names, show=show, output_location=output_location)
+
+    # restore original stdout
+    sys.stdout = stdout_orig
 
 
 if __name__ == '__main__':
-    run()
-
-"""dump"""
-
-# for i, (logits, augment) in enumerate(list(product([True, False], [True, False]))):
+    run(models.fcn_residual_32x_18l, use_small_ds=True, augment=False)

@@ -12,9 +12,9 @@ from tensorflow.keras.layers.experimental.preprocessing import \
 from src_util.general import safestr
 
 
-def augmentation(aug=True, crop_to=64):
+def augmentation(aug=True, crop_to=64, orig_size=64):
     aug_model = tf.keras.Sequential(name='augmentation')
-    aug_model.add(Input(shape=(64, 64, 3)))
+    aug_model.add(Input(shape=(orig_size, orig_size, 3)))
 
     if aug:
         aug_model.add(RandomFlip("horizontal"))
@@ -24,10 +24,26 @@ def augmentation(aug=True, crop_to=64):
     if crop_to != 64:
         aug_model.add(CenterCrop(crop_to, crop_to))
 
+    if not aug and crop_to == 64:
+        # no other layers, model cannot be empty
+        # base Layer class == identity layer
+        # aug_model.add(tf.keras.layers.Lambda(lambda x: x))
+        aug_model.add(tf.keras.layers.Layer(name='identity'))
+
     return aug_model
 
 
-def residual_32x_31l_concat(num_classes, name_suffix=''):
+def residual_64x_33l_concat(num_classes, name_suffix=''):
+    """
+    March 15
+
+    Dilation 2
+    1x1 conv in common branch
+
+    :param num_classes:
+    :param name_suffix:
+    :return:
+    """
     he_norm = tf.keras.initializers.he_normal()
     conv_args = {
         'activation': 'relu',
@@ -36,22 +52,26 @@ def residual_32x_31l_concat(num_classes, name_suffix=''):
     }
     width = 64
 
-    x = Input(shape=(None, None, 3))
+    def residual_block(x):
+        y = Cropping2D(cropping=((2, 2), (2, 2)), )(x)
+
+        x = BatchNormalization()(x)
+        x = Conv2D(width, 3, **conv_args, dilation_rate=2)(x)
+
+        x = Concatenate()([x, y])
+        x = Conv2D(width, 1, **conv_args)(x)
+        return x
+
+    x = Input(shape=(None, None, 3))  # None, None
     input_layer = x
 
     x = Conv2D(width, 3, **conv_args)(x)
 
-    for i in range(14):
-        y = Cropping2D(cropping=((1, 1), (1, 1)))(x)
-
-        x = BatchNormalization()(x)
-        x = Conv2D(width, 3, **conv_args)(x)
-
-        x = Concatenate()([x, y])
-        x = Conv2D(width, 1, **conv_args)(x)
+    for i in range(15):
+        x = residual_block(x)
 
     x = BatchNormalization()(x)
-    x = Conv2D(width, 2, **conv_args)(x)
+    x = Conv2D(width, 2, **conv_args, )(x)
 
     x = BatchNormalization()(x)
     x = Conv2D(num_classes, 1, kernel_initializer=he_norm)(x)  # no activation
@@ -64,7 +84,17 @@ def residual_32x_31l_concat(num_classes, name_suffix=''):
 
 
 
-def residual_32x_17l_concat(num_classes, name_suffix=''):
+def residual_32x_31l_concat(num_classes, name_suffix=''):
+    """
+    March 10+
+
+    No dilation
+    1x1Conv in common trunk
+
+    :param num_classes:
+    :param name_suffix:
+    :return:
+    """
     he_norm = tf.keras.initializers.he_normal()
     conv_args = {
         'activation': 'relu',
@@ -73,22 +103,76 @@ def residual_32x_17l_concat(num_classes, name_suffix=''):
     }
     width = 64
 
-    x = Input(shape=(None, None, 3))  # None, None
+    def residual_block(x):
+        y = Cropping2D(cropping=((1, 1), (1, 1)), )(x)
+
+        x = BatchNormalization()(x)
+        x = Conv2D(width, 3, **conv_args, )(x)
+
+        x = Concatenate()([x, y])
+        x = Conv2D(width, 1, **conv_args, )(x)
+        return x
+
+    x = Input(shape=(None, None, 3))
     input_layer = x
 
-    x = Conv2D(width, 3, **conv_args)(x)
+    x = Conv2D(width, 3, **conv_args, )(x)
 
-    for i in range(7):
-        y = Cropping2D(cropping=((2, 2), (2, 2)))(x)
+    for i in range(14):
+        x = residual_block(x)
+
+    x = BatchNormalization()(x)
+    x = Conv2D(width, 2, **conv_args)(x)
+
+    x = BatchNormalization()(x)
+    x = Conv2D(num_classes, 1, kernel_initializer=he_norm, )(x)  # no activation
+
+    x = Softmax()(x)
+
+    model = tf.keras.Model(inputs=input_layer, outputs=x,
+                           name='residual_concat_32x_31l_' + name_suffix)
+    return model, 32
+
+
+def residual_32x_17l_concat(num_classes, name_suffix=''):
+    """
+    March 10+
+
+    Dilation 2
+    1x1 conv in common branch
+
+    :param num_classes:
+    :param name_suffix:
+    :return:
+    """
+    he_norm = tf.keras.initializers.he_normal()
+    conv_args = {
+        'activation': 'relu',
+        'padding': 'valid',
+        'kernel_initializer': he_norm
+    }
+    width = 64
+
+    def residual_block(x):
+        y = Cropping2D(cropping=((2, 2), (2, 2)), )(x)
 
         x = BatchNormalization()(x)
         x = Conv2D(width, 3, **conv_args, dilation_rate=2)(x)
 
         x = Concatenate()([x, y])
         x = Conv2D(width, 1, **conv_args)(x)
+        return x
+
+    x = Input(shape=(None, None, 3))  # None, None
+    input_layer = x
+
+    x = Conv2D(width, 3, **conv_args, )(x)
+
+    for i in range(7):
+        x = residual_block(x)
 
     x = BatchNormalization()(x)
-    x = Conv2D(width, 2, **conv_args)(x)
+    x = Conv2D(width, 2, **conv_args, )(x)
 
     x = BatchNormalization()(x)
     x = Conv2D(num_classes, 1, kernel_initializer=he_norm)(x)  # no activation
@@ -103,6 +187,10 @@ def residual_32x_17l_concat(num_classes, name_suffix=''):
 def residual_64x(num_classes, name_suffix=''):
     """
     March 9
+
+    1x1Conv in skip branch
+    Adding branches
+
     :param num_classes:
     :param name_suffix:
     :return:
@@ -116,31 +204,37 @@ def residual_64x(num_classes, name_suffix=''):
     }
     width = 64
 
-    x = Input(shape=(None, None, 3))  # None, None
-    input_layer = x
-
-    # note: No BatchNorm
-
-    x = Conv2D(width, 3, activation='relu', padding='same', kernel_initializer=he_norm)(x)
-
-    for i in range(1, 16):
+    def residual_block(x, pooling=False):
         # skip-branch
-        y = Cropping2D(cropping=((2, 2), (2, 2)))(x)
+        y = Cropping2D(cropping=((2, 2), (2, 2)), )(x)
         y = Conv2D(width, 1, **conv_args)(y)
 
         # main branch
         x = BatchNormalization()(x)
-        x = Conv2D(width, 3, **conv_args, dilation_rate=2)(x)
+        x = Conv2D(width, 3, **conv_args, dilation_rate=2, )(x)
 
-        if i % 4 == 1:  # 4x in total
+        if pooling:  # 4x in total
             x = MaxPool2D(pool_size=2, strides=1, padding='same')(x)
 
         x = add([x, y])
+        return x
 
+    x = Input(shape=(None, None, 3))  # None, None
+    input_layer = x
+
+    # note: No BatchNorm
+    x = Conv2D(width, 3, activation='relu', padding='same',
+               kernel_initializer=he_norm, )(x)
+
+    for i in range(1, 16):
+        x = residual_block(x, pooling=(i % 4 == 1))
+
+
+    # note: No BatchNorm
     x = Conv2D(128, 4, **conv_args)(x)
 
     x = BatchNormalization()(x)
-    x = Conv2D(num_classes, 1, **conv_args)(x)  # todo relu before softmax
+    x = Conv2D(num_classes, 1, kernel_initializer=he_norm)(x)  # todo run without the relu here
     x = Softmax()(x)
 
     model = tf.keras.Model(inputs=input_layer, outputs=x, name='residual_64x' + name_suffix)
@@ -168,23 +262,25 @@ def dilated_1(num_classes, name_suffix=''):
     input_layer = x
 
     # Note: No BatchNorm
-    x = Conv2D(width, 3, activation='relu', padding='same', kernel_initializer=he_norm)(x)
+    x = Conv2D(width, 3, activation='relu', padding='same',
+               kernel_initializer=he_norm, )(x)
 
     for i in range(1, 6):
-        y = Cropping2D(cropping=(i, i))(x)
+        y = Cropping2D(cropping=(i, i), name=f'crop{i}')(x)
 
         x = BatchNormalization()(x)
-        x = Conv2D(width, 3, **conv_args, dilation_rate=i)(x)
+        x = Conv2D(width, 3, **conv_args, dilation_rate=i, )(x)
 
         if non_cropping_conv:
             x = BatchNormalization()(x)
-            x = Conv2D(width, 3, activation='relu', padding='same', kernel_initializer=he_norm)(x)
+            x = Conv2D(width, 3, activation='relu', padding='same',
+                       kernel_initializer=he_norm, )(x)
 
         x = MaxPool2D(pool_size=2, strides=1, padding='same')(x)
         x = add([x, y])
 
     # Note: No BatchNorm
-    x = Conv2D(width, 2, **conv_args)(x)
+    x = Conv2D(width, 2, **conv_args, )(x)
 
     x = BatchNormalization()(x)
     x = Conv2D(num_classes, 1, **conv_args)(x)
@@ -194,9 +290,11 @@ def dilated_1(num_classes, name_suffix=''):
     return model, 32
 
 
-def fcn_residual_1(num_classes, name_suffix=''):
+def fcn_residual_32x_18l(num_classes, name_suffix=''):
     """
     February 15
+
+    Adding residual branches
 
     :param num_classes:
     :param name_suffix:
@@ -212,17 +310,17 @@ def fcn_residual_1(num_classes, name_suffix=''):
 
     input_layer = Input(shape=(None, None, 3))
     x = BatchNormalization()(input_layer)
-    x = Conv2D(width, 3, **conv_args)(x)  # Makes width wide enough for addition inside skip module
+    x = Conv2D(width, 3, **conv_args, )(x)  # Makes width wide enough for addition inside skip module
 
     for i in range(7):
         # width = 1 << (i // 4 + coef)  # ceil(log2(i / 2))  # todo try widening again
-        y = Cropping2D(cropping=((2, 2), (2, 2)))(x)
+        y = Cropping2D(cropping=((2, 2), (2, 2)), )(x)
 
         x = BatchNormalization()(x)
-        x = Conv2D(width, 3, **conv_args)(x)
+        x = Conv2D(width, 3, **conv_args, )(x)
 
         x = BatchNormalization()(x)
-        x = Conv2D(width, 3, **conv_args)(x)
+        x = Conv2D(width, 3, **conv_args, )(x)
 
         # if i % 2 == 0:
         #     x = AvgPool2D(pool_size=(2, 2), strides=(1, 1), padding='same')(x)
@@ -268,7 +366,7 @@ def fcn_sequential(num_classes, name_suffix=''):
         # width ranges from 32 to 512
 
         model.add(BatchNormalization())
-        model.add(Conv2D(width, 3, **conv_args))
+        model.add(Conv2D(width, 3, **conv_args, ))
 
         if i % 4 == 3:
             model.add(MaxPool2D(pool_size=(2, 2), strides=(1, 1), padding='same'))
@@ -313,7 +411,7 @@ def fcn_maxpool_div(num_classes, weight_init_idx=0):
     model.add(experimental.preprocessing.Rescaling(1. / 255))
 
     for i in range(layers):
-        model.add(BatchNormalization())
+        model.add(BatchNormalization(name='bn'))
         model.add(Conv2D(width[i] * channels_base,
                          3,
                          activation='relu',
@@ -394,9 +492,7 @@ def conv_6layers(num_classes, first_conv=32):
             Dense(128, activation='relu', kernel_initializer=init),
             # Dropout(0.2),
             Dense(num_classes, activation='softmax'),
-
-        ]
-        , name='sequential_6conv_{}channels_doubling'.format(first_conv)
+        ], name='sequential_6conv_{}channels_doubling'.format(first_conv)
     )
     return model, 64
 
@@ -426,9 +522,7 @@ def conv_init(num_classes, first_conv=32):
             Flatten(),
             Dense(128, activation='relu', kernel_initializer=he),
             Dense(num_classes, activation='softmax'),
-
-        ]
-        , name='sequential_6conv_{}channels_doubling'.format(first_conv)
+        ], name='sequential_6conv_{}channels_doubling'.format(first_conv)
     )
     return model, 64
 

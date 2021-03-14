@@ -176,8 +176,9 @@ def visualize_results(model, dataset, class_names, epochs_trained,
     """
 
 
-def heatmaps_all(model, class_names, val=True,
-                 undecided_only=False, maxes_only=False, output_location=None, show=True):
+def heatmaps_all(base_model, class_names, val=True,
+                 undecided_only=False, maxes_only=False,
+                 output_location=None, show=True):
     labels_dir = 'sirky' + '_val' * val
     labels = load_labels(labels_dir + os.sep + 'labels.csv', use_full_path=False, keep_bg=False)
 
@@ -185,8 +186,11 @@ def heatmaps_all(model, class_names, val=True,
         output_location = os.path.join(output_location, 'heatmaps')
         os.makedirs(output_location, exist_ok=True)
 
+    # debugging
+    # file = next(iter(labels))
+
     for file in list(labels):
-        predict_full_image(model, class_names,
+        predict_full_image(base_model, class_names,
                            labels,
                            img_path=labels_dir + os.sep + file,
                            output_location=output_location,
@@ -207,6 +211,8 @@ def get_image_as_batch(img_path, scale=1.0, center_crop_fraction=1.0):
 
     img = cv.imread(img_path)
 
+    orig_size = img.shape[1], img.shape[0], img.shape[2]  # reversed indices
+
     if center_crop_fraction != 1.0:
         # crop from center
         low = (1 - center_crop_fraction) / 2
@@ -218,20 +224,20 @@ def get_image_as_batch(img_path, scale=1.0, center_crop_fraction=1.0):
     img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
     img = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))  # reversed indices, OK
     img_batch = np.expand_dims(img, 0)
-    return img_batch
+    return img_batch, orig_size
 
 
-def make_prediction(model, img, maxes_only=False, undecided_only=False):
+def make_prediction(base_model, img, maxes_only=False, undecided_only=False):
     """Make full-image prediction
 
-    :param model:
+    :param base_model:
     :param img: img as batch
     :param maxes_only:
     :param undecided_only:
     :return:
     """
 
-    predictions_raw = model.predict(tf.convert_to_tensor(img, dtype=tf.uint8))
+    predictions_raw = base_model.predict(tf.convert_to_tensor(img, dtype=tf.uint8))
     predictions = tf.squeeze(predictions_raw).numpy()
 
     if maxes_only and not undecided_only:
@@ -254,7 +260,7 @@ def make_prediction(model, img, maxes_only=False, undecided_only=False):
     return predictions
 
 
-def full_img_pred_error(predictions, img_path, labels, class_names, model, model_crop_delta):
+def full_img_pred_error(predictions, img_path, file_labels, class_names, base_model):
     """Calculate error metric for full-image prediction
 
     todo work with prediction probability instead of argmax?
@@ -265,22 +271,9 @@ def full_img_pred_error(predictions, img_path, labels, class_names, model, model
                 jinak pevná penalty
 
     """
-    min_dist_background = 5.0
-    min_dist_background_penalty = 10.0
-    no_such_cat_penalty = 250.0
-
-    # todo moved rescale
-
-    # filter only labels for given image
-    file_labels = deepcopy([val for filename, val in labels.items() if
-                            filename in img_path])  # key in img_name, because img_name contains full path
-
-    if len(file_labels) != 1:
-        raise Exception('invalid labels for file {}\n{}'.format(img_path, file_labels))
-
-    file_labels = file_labels[0]
-
-    # todo all ^ can be moved too
+    min_dist_background = 2.0
+    min_dist_background_penalty = 100.0
+    no_such_cat_penalty = 1e5
 
     # file_labels = rescale_file_labels(file_labels)
     file_labels_merged = np.vstack([v for v in file_labels.values()])
@@ -319,7 +312,7 @@ def full_img_pred_error(predictions, img_path, labels, class_names, model, model
         if cat not in file_labels:  # no GT labels of this category
             # predicted non-present category
             category_losses[cat] = len(cat_list) * no_such_cat_penalty
-            print(f'{cat} not in {img_path} -> {category_losses[cat]}')
+            # print(f'{cat} not in {img_path} -> {category_losses[cat]}')
             continue
 
         # distance of each predicted point to each GT label
@@ -332,7 +325,7 @@ def full_img_pred_error(predictions, img_path, labels, class_names, model, model
     loss_sum = np.sum(loss_values_only)
 
     # log to csv
-    log_full_img_pred_losses(model.name, img_path, loss_sum, loss_values_only)
+    log_full_img_pred_losses(base_model.name, img_path, loss_sum, loss_values_only)
 
     return loss_sum, \
            [str(cat) + ': 1e{0:0.2g}'.format(log10(loss + 1)) for cat, loss in category_losses.items()]
@@ -346,30 +339,33 @@ def crop_to_prediction(img, pred):
     return img[low:-high, low:-high], model_crop_delta
 
 
-def rescale_file_labels(file_labels, scale, model_crop_delta, center_crop_fraction):
+def rescale_file_labels(file_labels, orig_img_size, scale, model_crop_delta, center_crop_fraction):
     # todo test function: show annotations on a scaled-down image
 
     new = dict()
     for cat, labels in file_labels.items():
         new_l = []
         for pos in labels:
-            # todo leaving this for today - check computation
-            p = int(pos[0]) * scale, int(pos[1]) * scale
-            p = (p[0] - center_crop_fraction) // 2, (p[1] - center_crop_fraction) // 2
-            p = p[0] - model_crop_delta // 2, p[1] - model_crop_delta // 2  # todo I think it's // 2
+            # p = np.array(pos) * scale  # numpy way
+            # p = p - center_crop_diff - model_crop_delta // 2
+
+            p = int(pos[0]) * scale, int(pos[1]) * scale  # 3024 -> 1512
+            center_crop_diff = orig_img_size[0] * scale * (1 - center_crop_fraction) // 2, orig_img_size[1] * scale * (1 - center_crop_fraction) // 2
+            p = p[0] - center_crop_diff[0], p[1] - center_crop_diff[1]  # 1512 - 378 -> 1134
+
+            p = p[0] - model_crop_delta // 2, p[1] - model_crop_delta // 2  #
             new_l.append(p)
         new[cat] = new_l
 
     return new
 
 
-def predict_full_image(model, class_names, labels, img_path, output_location=None,
+def predict_full_image(base_model, class_names, labels, img_path, output_location=None,
                        show=True, maxes_only=False, undecided_only=False):
     """Show predicted heatmaps for full image
 
     :param labels:
-    :param heatmap_alpha:
-    :param model:
+    :param base_model:
     :param class_names:
     :param img_path:
     :param output_location:
@@ -381,13 +377,12 @@ def predict_full_image(model, class_names, labels, img_path, output_location=Non
     scale = 0.5
     center_crop_fraction = 0.5
 
-    img = get_image_as_batch(img_path, scale, center_crop_fraction)
+    img, orig_size = get_image_as_batch(img_path, scale, center_crop_fraction)
 
-    predictions = make_prediction(model, img, maxes_only, undecided_only)
+    predictions = make_prediction(base_model, img, maxes_only, undecided_only)
     img = img[0]  # remove batch dimension
 
-    model_crop_delta = img.shape[0] - pred.shape[0]
-    # Model prediction is "cropped", adjust image accordingly
+    # Model prediction is cropped, adjust image accordingly
     img, model_crop_delta = crop_to_prediction(img, predictions)
 
     category_titles = class_names
@@ -397,14 +392,24 @@ def predict_full_image(model, class_names, labels, img_path, output_location=Non
     elif maxes_only:
         plots_title = 'maxes'
     else:
+        try:
+            # calculate full image loss for prediction
+            file_labels = deepcopy([val for filename, val in labels.items() if
+                                    filename in img_path])  # key in img_name, because img_name contains full path
+            if len(file_labels) != 1:
+                raise Exception('invalid labels for file {}\n{}'.format(img_path, file_labels))
+            file_labels = file_labels[0]
+            file_labels = rescale_file_labels(file_labels, orig_size, scale, model_crop_delta, center_crop_fraction)
 
-        labels = rescale_file_labels(labels, scale, model_crop_delta, center_crop_fraction)  # todo must get file labels only
-        losses_sum, category_losses = full_img_pred_error(predictions, img_path, labels, class_names, model,
-                                                          model_crop_delta)
-        category_titles = category_losses
-        plots_title = str(losses_sum // 1e6) + 'M'
+            losses_sum, category_losses = full_img_pred_error(predictions, img_path, file_labels, class_names, base_model)
+            category_titles = category_losses
+            plots_title = str(losses_sum // 1e6) + 'M'
 
-    # plots_title = ''
+            error_location(predictions, img, img_path, file_labels, class_names,
+                           output_location=output_location, show=show)
+        except Exception as e:
+            plots_title = ''
+            print(e)
 
     display_predictions(predictions, img, img_path, category_titles, plots_title,
                         show=show, output_location=output_location, superimpose=True)
@@ -566,29 +571,33 @@ def show_layer_activations(model, data_augmentation, ds, class_names, show=True,
         # print(f'{layer_name}: {out_of_range_count=} / {total_count}')
 
 
-def error_location(predictions, img, file_labels, class_names):
+def error_location(predictions, img, img_path, file_labels, class_names, output_location=None, show=True):
     """Attribute full image error in full image predictions
-
-    todo calling of this
 
     :param predictions:
     :param img:
+    :param img_path:
     :param file_labels:
     :param class_names:
+    :param show:
+    :param output_location:
     :return:
 
     inspiration for grid operations (N-th answer):
     https://stackoverflow.com/questions/36013063/what-is-the-purpose-of-meshgrid-in-python-numpy
+
+    # grid distance to keypoint can be cached and loaded from a pickle
+
     """
 
     def dst_pt2grid(pt):
-        return np.hypot(gx - pt[0], gy - pt[1])
+        return np.square(np.hypot(gx - pt[0], gy - pt[1]))
 
     gx, gy = np.meshgrid(np.arange(img.shape[1]), np.arange(img.shape[0]))
-    flat_penalty = np.zeros((img.shape[0], img.shape[1])) + 0
+    flat_penalty = np.zeros((img.shape[0], img.shape[1])) + 100
 
     cat_distances = []
-    for i, cat in enumerate(class_names):
+    for cat in class_names:
         if cat not in file_labels:
             if cat == 'background':
                 cat_distances.append(np.zeros((img.shape[0], img.shape[1])))
@@ -599,20 +608,27 @@ def error_location(predictions, img, file_labels, class_names):
         cat_labels = file_labels[cat]
         distance_layers = list(map(dst_pt2grid, cat_labels))
         distance_layers = np.vstack([distance_layers])
+        distance_layers = distance_layers / np.sqrt(np.max(distance_layers))
         min_distance = np.min(distance_layers, axis=0)  # minimum distance to any keypoint
         cat_distances.append(min_distance)
 
     cat_distances = np.dstack(cat_distances)
     titles = np.append(class_names, 'full_image')
-    # cat_distances = cat_distances / np.max(cat_distances)
 
     # elementwise multiply predictions with cat_distances
     tst = predictions * cat_distances
 
+    # tst expected to be in [0 .. 1] range,
     tst /= np.max(tst)
+    # but it would be barely visible like that
+    tst *= 5
 
-    display_predictions(tst, img, img_path, titles)
-    # grid distance to keypoint can be cached and loaded from a pickle?
+    # sums = np.sum(tst, axis=(0, 1))
+
+    if output_location:
+        output_location = os.path.join(output_location, 'err_distribution')
+
+    display_predictions(tst, img, img_path, titles, output_location=output_location, show=show)
 
 
 def show_augmentation(data_augmentation, dataset):

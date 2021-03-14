@@ -15,7 +15,6 @@ class DuplicateStream(object):
     http://www.tentech.ca/2011/05/stream-tee-in-python-saving-stdout-to-file-while-keeping-the-console-alive/
     Based on https://gist.github.com/327585 by Anand Kunal
 
-    pray for Py3 functionality
     """
 
     def __init__(self, stream1, stream2):
