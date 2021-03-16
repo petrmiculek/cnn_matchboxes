@@ -5,7 +5,7 @@ def safestr(*args):
     :return: sanitized filename-safe string
     """
     string = str(args)
-    keepcharacters = (' ', '.', '_')
+    keepcharacters = (' ', '.', '_', '-')
     return "".join(c for c in string if c.isalnum() or c in keepcharacters).rstrip().replace(' ', '_')
 
 

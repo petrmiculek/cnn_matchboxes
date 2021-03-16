@@ -475,7 +475,7 @@ def show_layer_activations(model, data_augmentation, ds, class_names, show=True,
         os.makedirs(output_location, exist_ok=True)
 
     # choose non-background sample
-    batch, labels = list(ds)[0]  # first batch
+    batch, labels = next(iter(ds))  # first batch
     idx = np.argmax(labels)
 
     batch_img0 = tf.convert_to_tensor(batch[idx: idx + 1])  # first image (made to a 1-element batch)

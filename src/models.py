@@ -5,7 +5,7 @@ import util
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import \
-    add, Conv2D, BatchNormalization, Softmax, Input, MaxPool2D, Cropping2D, Concatenate, AvgPool2D
+    add, Conv2D, BatchNormalization, Softmax, Input, MaxPool2D, Cropping2D, Concatenate, AvgPool2D, ZeroPadding2D
 from tensorflow.keras.layers.experimental.preprocessing import \
     CenterCrop, RandomFlip, RandomRotation
 
@@ -31,6 +31,159 @@ def augmentation(aug=True, crop_to=64, orig_size=64):
         aug_model.add(tf.keras.layers.Layer(name='identity'))
 
     return aug_model
+
+
+def dilated_64x_exp2(num_classes, name_suffix=''):
+    """
+    March 15
+
+    Dilation rate growth accounts for receptive field growth caused by pooling
+
+    :param num_classes:
+    :param name_suffix:
+    :return:
+    """
+    he_norm = tf.keras.initializers.he_normal()
+    conv_args = {
+        'activation': 'relu',
+        'padding': 'valid',
+        # 'padding': 'same',  # check
+        'kernel_initializer': he_norm
+    }
+    base_width = 16  # can go 1 up
+
+    x = Input(shape=(None, None, 3))  # None, None
+    input_layer = x
+
+    # non-cropping conv
+    # x = Conv2D(base_width, 3, kernel_initializer=he_norm, activation='relu', padding='same')(x)
+
+    for i, width_coef in zip([1, 3, 5, 7, 9], [2, 4, 4, 8, 8]):
+
+        w = base_width * width_coef
+        x = Conv2D(w, 3, **conv_args, dilation_rate=i)(x)
+
+        x = MaxPool2D((2, 2), strides=(1, 1), padding='same')(x)
+        x = BatchNormalization()(x)
+
+
+    x = BatchNormalization()(x)
+    x = Conv2D(16 * base_width, 2, **conv_args, dilation_rate=11)(x)  # -> 3x3
+
+    x = BatchNormalization()(x)
+    x = Conv2D(16 * base_width, 3, **conv_args)(x)  # fit-once
+
+    x = BatchNormalization()(x)
+    x = Conv2D(32 * base_width, 1, **conv_args)(x)
+
+    x = BatchNormalization()(x)
+    x = Conv2D(num_classes, 1, kernel_initializer=he_norm, activation=None)(x)
+
+    x = Softmax()(x)
+
+    model = tf.keras.Model(inputs=input_layer, outputs=x,
+                           name='dilated_64x_exp2_' + name_suffix)
+    return model, 32
+
+
+def dilated_32x_exp2_wider(num_classes, name_suffix=''):
+    """
+    March 15
+
+    Dilation rate growth accounts for receptive field growth caused by pooling
+
+    :param num_classes:
+    :param name_suffix:
+    :return:
+    """
+    he_norm = tf.keras.initializers.he_normal()
+    conv_args = {
+        'activation': 'relu',
+        'padding': 'valid',
+        # 'padding': 'same',  # check
+        'kernel_initializer': he_norm
+    }
+    base_width = 64
+
+    x = Input(shape=(None, None, 3))  # None, None
+    input_layer = x
+
+    # non-cropping conv
+    x = Conv2D(base_width, 3, kernel_initializer=he_norm, activation='relu', padding='same')(x)
+
+    for i, width_coef in zip([3, 5, 7], [2, 4, 8]):
+        x = BatchNormalization()(x)
+
+        w = base_width * width_coef
+        x = Conv2D(w, 3, **conv_args, dilation_rate=i)(x)
+
+        x = MaxPool2D((2, 2), strides=(1, 1), padding='same')(x)
+
+
+    x = BatchNormalization()(x)
+    x = Conv2D(16 * base_width, 2, **conv_args)(x)  # fit-once
+
+    x = BatchNormalization()(x)
+    x = Conv2D(16 * base_width, 1, **conv_args)(x)
+
+    x = BatchNormalization()(x)
+    x = Conv2D(num_classes, 1, kernel_initializer=he_norm, activation=None)(x)
+
+    x = Softmax()(x)
+
+    model = tf.keras.Model(inputs=input_layer, outputs=x,
+                           name='dilated_32x_exp2_wider_' + name_suffix)
+    return model, 32
+
+
+def dilated_32x_exp2(num_classes, name_suffix=''):
+    """
+    March 15
+
+    Dilation rate growth accounts for receptive field growth caused by pooling
+
+    :param num_classes:
+    :param name_suffix:
+    :return:
+    """
+    he_norm = tf.keras.initializers.he_normal()
+    conv_args = {
+        'activation': 'relu',
+        'padding': 'valid',
+        # 'padding': 'same',  # check
+        'kernel_initializer': he_norm
+    }
+    base_width = 32
+
+    x = Input(shape=(None, None, 3))  # None, None
+    input_layer = x
+
+    # non-cropping conv
+    x = Conv2D(base_width, 3, kernel_initializer=he_norm, activation='relu', padding='same')(x)
+
+    for i, width_coef in zip([3, 5, 7], [2, 4, 8]):
+        x = BatchNormalization()(x)
+
+        w = base_width * width_coef
+        x = Conv2D(w, 3, **conv_args, dilation_rate=i)(x)
+
+        x = MaxPool2D((2, 2), strides=(1, 1), padding='same')(x)
+
+
+    x = BatchNormalization()(x)
+    x = Conv2D(16 * base_width, 2, **conv_args)(x)  # fit-once
+
+    x = BatchNormalization()(x)
+    x = Conv2D(16 * base_width, 1, **conv_args)(x)
+
+    x = BatchNormalization()(x)
+    x = Conv2D(num_classes, 1, kernel_initializer=he_norm, activation=None)(x)
+
+    x = Softmax()(x)
+
+    model = tf.keras.Model(inputs=input_layer, outputs=x,
+                           name='dilated_32x_exp2' + name_suffix)
+    return model, 32
 
 
 def residual_64x_33l_concat(num_classes, name_suffix=''):
@@ -62,7 +215,7 @@ def residual_64x_33l_concat(num_classes, name_suffix=''):
         x = Conv2D(width, 1, **conv_args)(x)
         return x
 
-    x = Input(shape=(None, None, 3))  # None, None
+    x = Input(shape=(64, 64, 3))  # None, None
     input_layer = x
 
     x = Conv2D(width, 3, **conv_args)(x)
@@ -71,7 +224,7 @@ def residual_64x_33l_concat(num_classes, name_suffix=''):
         x = residual_block(x)
 
     x = BatchNormalization()(x)
-    x = Conv2D(width, 2, **conv_args, )(x)
+    x = Conv2D(2 * width, 2, **conv_args, )(x)
 
     x = BatchNormalization()(x)
     x = Conv2D(num_classes, 1, kernel_initializer=he_norm)(x)  # no activation
@@ -79,8 +232,8 @@ def residual_64x_33l_concat(num_classes, name_suffix=''):
     x = Softmax()(x)
 
     model = tf.keras.Model(inputs=input_layer, outputs=x,
-                           name='residual_concat_32x_31l_' + name_suffix)
-    return model, 32
+                           name='residual_concat_64x_33l_concat_' + name_suffix)
+    return model, 64
 
 
 
@@ -184,13 +337,16 @@ def residual_32x_17l_concat(num_classes, name_suffix=''):
     return model, 32
 
 
-def residual_64x(num_classes, name_suffix=''):
+def residual_64x(num_classes, name_suffix='', skip_branch_conv=True):
     """
     March 9
+
+    Dilated 2
 
     1x1Conv in skip branch
     Adding branches
 
+    :param skip_branch_conv:
     :param num_classes:
     :param name_suffix:
     :return:
@@ -207,7 +363,8 @@ def residual_64x(num_classes, name_suffix=''):
     def residual_block(x, pooling=False):
         # skip-branch
         y = Cropping2D(cropping=((2, 2), (2, 2)), )(x)
-        y = Conv2D(width, 1, **conv_args)(y)
+        if skip_branch_conv:
+            y = Conv2D(width, 1, **conv_args)(y)
 
         # main branch
         x = BatchNormalization()(x)
