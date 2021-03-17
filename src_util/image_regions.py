@@ -1,8 +1,9 @@
-import csv
-import pathlib
-import os
-import random
 import argparse
+import csv
+import os
+import pathlib
+import random
+import sys
 
 import cv2 as cv
 import numpy as np
@@ -22,19 +23,6 @@ padding x radius for background
 todo cdist instead of euclid_dist
 """
 
-# swapping of generating keypoint/background cutouts
-do_foreground = True
-do_background = True
-val = False
-
-# global parameters
-region_side = 64
-scale = 0.50
-bg_samples = 500  # per photo background locations
-
-params_suffix = '_{}_{:03d}'.format(region_side, int(scale * 100))
-
-radius = region_side // 2
 random.seed(1234)
 
 
@@ -59,11 +47,12 @@ def crop_out(img, x1, y1, x2, y2):
     return cropped
 
 
-def get_boundaries(img, center_pos):
+def get_boundaries(img, center_pos, radius=32):
     """
 
-    :param center_pos: [x, y]
     :param img: [y, x]
+    :param center_pos: [x, y]
+    :param radius:
     :return: top-left and bottom-right coordinates for region
     """
 
@@ -81,8 +70,8 @@ def get_boundaries(img, center_pos):
     return x - radius, y - radius, x + radius, y + radius
 
 
-def cut_out_around_point(img, center_pos):
-    x1, x2, y1, y2 = get_boundaries(img, center_pos)
+def cut_out_around_point(img, center_pos, radius=32):
+    x1, x2, y1, y2 = get_boundaries(img, center_pos, radius)
     return crop_out(img, x1, x2, y1, y2)
 
 
@@ -98,32 +87,39 @@ def euclid_dist(pos1, pos2):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--foreground', '-f',
-                        help="create foreground=keypoint samples",
-                        action='store_true')
+    parser.add_argument('--foreground', '-f', action='store_true',
+                        help="create foreground=keypoint samples")
 
-    parser.add_argument('--background', '-b',
-                        help="create background samples",
-                        action='store_true')
+    parser.add_argument('--background', '-b', action='store_true',
+                        help="create background samples")
 
-    parser.add_argument('--smaller_radius', '-s',
-                        help="generate background samples closer to the image center",
-                        action='store_true')
-    parser.add_argument('--val', '-v',
-                        help="use validation data (instead of training)",
-                        action='store_true')
+    parser.add_argument('--val', '-v', action='store_true',
+                        help="use validation data (instead of training)")
 
-    # todo cutout size, bg_samples
+    parser.add_argument('--cutout_size', '-c', type=int, default=64,
+                        help="cutout=sample size")
+
+    parser.add_argument('--per_image_samples', '-p', type=int, default=100,
+                        help="background sample count")
+
+    parser.add_argument('--scale_percentage', '-s', type=int, default=50,
+                        help="scaling percentage")
+
+    parser.add_argument('--reduced_sampling_area', '-r', action='store_true',
+                        help="generate background samples closer to the image center")
+
+    # python src_util/image_regions.py -f -b -c 64 -p 100 -s 50
+    # python src_util/image_regions.py -b -c 64 -r -p 100 -s 50
 
     args = parser.parse_args()
 
-    val = args.val
-    do_background = args.background
-    do_foreground = args.foreground
+    scale = args.scale_percentage / 100
+    region_side = args.cutout_size
+    radius = args.cutout_size // 2
 
     padding = (4032 * scale) // 3
     # radius -> full image, padding -> center
-    if args.smaller_radius:
+    if args.reduced_sampling_area:
         cutout_padding = padding
         shift_top = 500
     else:
@@ -131,15 +127,24 @@ if __name__ == '__main__':
         shift_top = 0
 
     # in/out folders
-    input_folder = 'sirky' + '_val' * val
-    output_folder = 'image_regions' + params_suffix + '_val' * val
+    input_folder = 'sirky' + '_val' * args.val
+    run_params = f'{args.cutout_size}x_{args.scale_percentage:03d}s_{args.per_image_samples}bg'
+    output_path = 'datasets' + os.sep + run_params + '_val' * args.val
 
     labels_file = input_folder + os.sep + 'labels.csv'
-    bg_csv_file = output_folder + os.sep + 'background' + '_val' * val + '.csv'
-    merged_labels_bg_csv = output_folder + os.sep + 'labels_with_bg' + '_val' * val + '.csv'
+    bg_csv_file = output_path + os.sep + 'background' + '_val' * args.val + '.csv'
+    merged_labels_bg_csv = output_path + os.sep + 'labels_with_bg' + '_val' * args.val + '.csv'
 
-    if not os.path.isdir(output_folder):
-        os.makedirs(output_folder, exist_ok=True)
+    if \
+            not os.path.isdir(input_folder) or \
+                    not os.path.isfile(labels_file):
+        print('could not find input folders/files')
+        print(os.path.isdir(input_folder),
+              os.path.isfile(labels_file))
+        sys.exit(0)
+
+    if not os.path.isdir(output_path):
+        os.makedirs(output_path, exist_ok=True)
 
     labels = load_labels(labels_file, use_full_path=False)
     # mean_label_per_category_count = np.mean([len(labels[file]) for file in labels])
@@ -150,13 +155,14 @@ if __name__ == '__main__':
 
         img = cv.imread(input_folder + os.sep + file)
         orig_size = img.shape[1], img.shape[0]
-        img = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))  # reversed indices, OK
+        img = cv.resize(img, (int(img.shape[1] * scale),
+                              int(img.shape[0] * scale)))  # reversed indices, OK
         file_labels = []
 
-        if do_foreground:
+        if args.foreground:
             # generating regions from labels = keypoints
             for category in labels[file]:  # dict of categories
-                category_folder = output_folder + os.sep + category
+                category_folder = output_path + os.sep + category
 
                 if not os.path.isdir(category_folder):
                     os.makedirs(category_folder, exist_ok=True)
@@ -167,60 +173,60 @@ if __name__ == '__main__':
 
                     file_labels.append(label_pos_scaled)
 
-                    region = cut_out_around_point(img, label_pos_scaled)
+                    region = cut_out_around_point(img, label_pos_scaled, radius)
 
                     # save image
                     region_filename = file.split('.')[0] + '_(' + str(label_pos[0]) + ',' + str(label_pos[1]) + ').jpg'
 
                     tmp = cv.imwrite(category_folder + os.sep + region_filename, region)
 
-        if do_background:
+        if args.background:
             # generating regions from the background
             category = 'background'
-            if not os.path.isdir(output_folder + os.sep + category):
-                os.makedirs(output_folder + os.sep + category, exist_ok=True)
+            if not os.path.isdir(output_path + os.sep + category):
+                os.makedirs(output_path + os.sep + category, exist_ok=True)
 
-            repeated = 0  # counter
+            samples = 2 * args.per_image_samples  # generate more than needed, some might get filtered
+            # try normal distribution?
+            coords = np.vstack([
+                np.random.randint(cutout_padding - shift_top, img.shape[0] - cutout_padding, samples),
+                np.random.randint(cutout_padding, img.shape[1] - cutout_padding, samples)
+            ]).T  # <- note the .T
+
+            min_dists = cdist(coords, np.array(file_labels)).min(axis=1)
+            indices = np.where(min_dists > region_side // 4, True, False)
+            coords = coords[indices]
+
+            if len(coords) < args.per_image_samples:
+                print('Too few points that are far enough', file=sys.stderr)
+
+            coords = coords[:args.per_image_samples]
+
             # save background positions to a csv file (same structure as keypoints)
             with open(bg_csv_file, 'a') as csvfile:
                 out_csv = csv.writer(csvfile, delimiter=',', quoting=csv.QUOTE_MINIMAL)
 
-                for i in range(bg_samples):  # how many background samples from image
-                    pos = (0, 0)
-                    repeat = True
-                    while repeat:
-                        repeat = False
-                        # generate position (region-center)
-                        pos = int(random.randint(cutout_padding - shift_top, img.shape[0] - cutout_padding)), \
-                              int(random.randint(cutout_padding, img.shape[1] - cutout_padding))
-
-                        # test that position is not too close to an existing label
-                        for label_pos in file_labels:
-                            # both file_labels positions and pos are already properly scaled
-                            if euclid_dist(pos, label_pos) < region_side // 4:  # or use: region_side // 4
-                                repeated += 1
-                                repeat = True
-
-                    region_background = cut_out_around_point(img, pos)
-                    region_path = output_folder + os.sep + category + os.sep  # per category folder
+                for pos in coords:  # how many background samples from image
+                    region_background = cut_out_around_point(img, pos, radius)
+                    region_path = output_path + os.sep + category + os.sep  # per category folder
 
                     # since positions were generated already re-scaled, de-scale them when writing
-                    x, y = str(int(pos[1] // scale)), str(int(pos[0] // scale))
+                    x, y = str(int(pos[1] / scale)), str(int(pos[0] / scale))
 
                     region_filename = file.split('.')[0] + '_(' + x + ',' + y + ').jpg'
 
                     tmp = cv.imwrite(region_path + region_filename, region_background)
                     out_csv.writerow(['background', x, y, file, orig_size[0], orig_size[1]])
 
-        # how many generated positions were wrong (= too close to keypoints)
-        # print(repeated)
+    if args.background:
+        if not os.path.isfile(bg_csv_file):
+            print('no background points csv file, skipping creation of merged labels')
+        else:
+            # Merge keypoints + background csv for cutout positions visualization
+            labels_csv = pd.read_csv(labels_file, header=None)
+            bg_csv = pd.read_csv(bg_csv_file, header=None)
+            merged = pd.concat([labels_csv, bg_csv], ignore_index=True)
 
-    if do_background:
-        # Merge keypoints + background csv for cutout positions visualization
-        labels_csv = pd.read_csv(labels_file, header=None)
-        bg_csv = pd.read_csv(bg_csv_file, header=None)
-        merged = pd.concat([labels_csv, bg_csv], ignore_index=True)
-
-        merged.to_csv(merged_labels_bg_csv, header=False, index=False, encoding='utf-8')
+            merged.to_csv(merged_labels_bg_csv, header=False, index=False, encoding='utf-8')
 
 # todo warning - manually created background labels won't be in background.csv
