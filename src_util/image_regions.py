@@ -23,6 +23,35 @@ padding x radius for background
 todo cdist instead of euclid_dist
 """
 
+"""
+Example usage:
+## 64x
+# bg100
+python src_util/image_regions.py -f -b -c 64 -p 100 -s 50
+python src_util/image_regions.py -b -c 64 -r -p 100 -s 50
+python src_util/image_regions.py -f -b -c 64 -p 100 -s 50 -v
+python src_util/image_regions.py -b -c 64 -r -p 100 -s 50 -v
+
+# bg250
+python src_util/image_regions.py -f -b -c 64 -p 250 -s 50
+python src_util/image_regions.py -b -c 64 -r -p 250 -s 50
+python src_util/image_regions.py -f -b -c 64 -p 250 -s 50 -v
+python src_util/image_regions.py -b -c 64 -r -p 250 -s 50 -v
+
+# bg500
+python src_util/image_regions.py -f -b -c 64 -p 500 -s 50
+python src_util/image_regions.py -b -c 64 -r -p 500 -s 50
+python src_util/image_regions.py -f -b -c 64 -p 500 -s 50 -v
+python src_util/image_regions.py -b -c 64 -r -p 500 -s 50 -v
+
+## 128x
+# bg100
+python src_util/image_regions.py -f -b -c 128 -p 100 -s 50
+python src_util/image_regions.py -b -c 128 -r -p 100 -s 50
+python src_util/image_regions.py -f -b -c 128 -p 100 -s 50 -v
+python src_util/image_regions.py -b -c 128 -r -p 100 -s 50 -v
+"""
+
 random.seed(1234)
 
 
@@ -139,8 +168,6 @@ if __name__ == '__main__':
             not os.path.isdir(input_folder) or \
                     not os.path.isfile(labels_file):
         print('could not find input folders/files')
-        print(os.path.isdir(input_folder),
-              os.path.isfile(labels_file))
         sys.exit(0)
 
     if not os.path.isdir(output_path):
@@ -157,7 +184,11 @@ if __name__ == '__main__':
         orig_size = img.shape[1], img.shape[0]
         img = cv.resize(img, (int(img.shape[1] * scale),
                               int(img.shape[0] * scale)))  # reversed indices, OK
-        file_labels = []
+
+        file_labels = [label
+                       for cat in labels[file]
+                       for label in labels[file][cat]]
+        file_labels = np.array(file_labels, dtype=np.int)
 
         if args.foreground:
             # generating regions from labels = keypoints
@@ -170,8 +201,6 @@ if __name__ == '__main__':
                 for label_pos in labels[file][category]:  # list of labels
                     label_pos_scaled = int(int(label_pos[1]) * scale), int(int(label_pos[0]) * scale)
                     # ^ inner int() does parsing, not rounding
-
-                    file_labels.append(label_pos_scaled)
 
                     region = cut_out_around_point(img, label_pos_scaled, radius)
 
