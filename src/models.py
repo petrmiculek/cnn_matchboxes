@@ -47,16 +47,12 @@ def dilated_64x_exp2(num_classes, name_suffix=''):
     conv_args = {
         'activation': 'relu',
         'padding': 'valid',
-        # 'padding': 'same',  # check
         'kernel_initializer': he_norm
     }
     base_width = 16  # can go 1 up
 
     x = Input(shape=(None, None, 3))  # None, None
     input_layer = x
-
-    # non-cropping conv
-    # x = Conv2D(base_width, 3, kernel_initializer=he_norm, activation='relu', padding='same')(x)
 
     for i, width_coef in zip([1, 3, 5, 7, 9], [2, 4, 4, 8, 8]):
 
@@ -83,7 +79,7 @@ def dilated_64x_exp2(num_classes, name_suffix=''):
 
     model = tf.keras.Model(inputs=input_layer, outputs=x,
                            name='dilated_64x_exp2_' + name_suffix)
-    return model, 32
+    return model, 64
 
 
 def dilated_32x_exp2_wider(num_classes, name_suffix=''):
@@ -100,7 +96,6 @@ def dilated_32x_exp2_wider(num_classes, name_suffix=''):
     conv_args = {
         'activation': 'relu',
         'padding': 'valid',
-        # 'padding': 'same',  # check
         'kernel_initializer': he_norm
     }
     base_width = 64

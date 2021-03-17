@@ -68,7 +68,7 @@ def get_callbacks(model, checkpoint_path='/tmp/checkpoint', bg_samples='_unknown
     # ^ No improvement on training data for 10 epochs -> Reduce LR,
     # No improvement on validation data for 15 epochs -> Halt
 
-    tensorboard_callback = TensorBoard(logs_dir, histogram_freq=1, profile_batch='300,400')
+    tensorboard_callback = TensorBoard(logs_dir, histogram_freq=1, profile_batch='100,1100')
     model_checkpoint_callback = ModelCheckpoint(
         filepath=checkpoint_path,
         save_weights_only=True,

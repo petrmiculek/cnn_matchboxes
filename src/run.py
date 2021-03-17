@@ -65,9 +65,13 @@ def run(model_builder, model_kwargs={}, use_small_ds=True, augment=False, train=
         time = safestr(datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
 
         print(f'{tf.__version__=}')
-        if len(tf.config.list_physical_devices('GPU')) == 0:
+        gpus = tf.config.list_physical_devices('GPU')
+        if len(gpus) == 0:
             print('no GPU available')
             sys.exit(0)
+
+        tf.config.experimental.set_memory_growth(gpus[0], True)
+
 
         """ Load dataset """
         train_ds, class_names, class_weights = get_dataset(data_dir)

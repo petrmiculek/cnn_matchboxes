@@ -21,7 +21,7 @@ def get_checkpoint_path(path='/tmp/model_checkpoints'):
     return os.path.join(path, 'checkpoint')
 
 
-# @tf.function
+# @tf.fu nction
 def pred_reshape(y_pred):
     return tf.reshape(y_pred, [tf.shape(y_pred)[0], tf.shape(y_pred)[3]])
 
@@ -83,7 +83,6 @@ def lr_scheduler(epoch, lr, start=10, end=150, decay=-0.10):
         return lr * tf.math.exp(decay)
 
 
-@tf.function
 class RandomColorDistortion(tf.keras.layers.Layer):
     """Apply multiple color-related augmentations
 

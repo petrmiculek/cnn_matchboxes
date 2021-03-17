@@ -30,5 +30,6 @@ if __name__ == '__main__':
     run(models.dilated_32x_exp2, use_small_ds=False, augment=False)
     run(models.dilated_32x_exp2, use_small_ds=False, augment=True)
 
+    #   failed
     run(models.dilated_64x_exp2, use_small_ds=False, augment=False)
     run(models.dilated_64x_exp2, use_small_ds=False, augment=True)
