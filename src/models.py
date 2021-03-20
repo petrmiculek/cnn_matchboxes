@@ -18,8 +18,11 @@ def augmentation(aug=True, crop_to=64, orig_size=64):
 
     if aug:
         aug_model.add(RandomFlip("horizontal"))
-        aug_model.add(RandomRotation(1 / 8))  # =rot45°, fill_mode='reflect' needed?
-        aug_model.add(util.RandomColorDistortion())
+        # aug_model.add(RandomRotation(1 / 16))  # =rot22.5°
+        aug_model.add(util.RandomColorDistortion(brightness_delta=0.3,
+                                                 contrast_range=(0.5, 1.5),
+                                                 hue_delta=0.1,
+                                                 saturation_range=(0.5, 1.5)))
 
     if crop_to != 64:
         aug_model.add(CenterCrop(crop_to, crop_to))
@@ -27,7 +30,6 @@ def augmentation(aug=True, crop_to=64, orig_size=64):
     if not aug and crop_to == 64:
         # no other layers, model cannot be empty
         # base Layer class == identity layer
-        # aug_model.add(tf.keras.layers.Lambda(lambda x: x))
         aug_model.add(tf.keras.layers.Layer(name='identity'))
 
     return aug_model
@@ -49,19 +51,17 @@ def dilated_64x_exp2(num_classes, name_suffix=''):
         'padding': 'valid',
         'kernel_initializer': he_norm
     }
-    base_width = 16  # can go 1 up
+    base_width = 8  # can go 1 up
 
     x = Input(shape=(None, None, 3))  # None, None
     input_layer = x
 
     for i, width_coef in zip([1, 3, 5, 7, 9], [2, 4, 4, 8, 8]):
-
         w = base_width * width_coef
         x = Conv2D(w, 3, **conv_args, dilation_rate=i)(x)
 
         x = MaxPool2D((2, 2), strides=(1, 1), padding='same')(x)
         x = BatchNormalization()(x)
-
 
     x = BatchNormalization()(x)
     x = Conv2D(16 * base_width, 2, **conv_args, dilation_rate=11)(x)  # -> 3x3
@@ -114,7 +114,6 @@ def dilated_32x_exp2_wider(num_classes, name_suffix=''):
 
         x = MaxPool2D((2, 2), strides=(1, 1), padding='same')(x)
 
-
     x = BatchNormalization()(x)
     x = Conv2D(16 * base_width, 2, **conv_args)(x)  # fit-once
 
@@ -163,7 +162,6 @@ def dilated_32x_exp2(num_classes, name_suffix=''):
         x = Conv2D(w, 3, **conv_args, dilation_rate=i)(x)
 
         x = MaxPool2D((2, 2), strides=(1, 1), padding='same')(x)
-
 
     x = BatchNormalization()(x)
     x = Conv2D(16 * base_width, 2, **conv_args)(x)  # fit-once
@@ -229,7 +227,6 @@ def residual_64x_33l_concat(num_classes, name_suffix=''):
     model = tf.keras.Model(inputs=input_layer, outputs=x,
                            name='residual_concat_64x_33l_concat_' + name_suffix)
     return model, 64
-
 
 
 def residual_32x_31l_concat(num_classes, name_suffix=''):
@@ -380,7 +377,6 @@ def residual_64x(num_classes, name_suffix='', skip_branch_conv=True):
 
     for i in range(1, 16):
         x = residual_block(x, pooling=(i % 4 == 1))
-
 
     # note: No BatchNorm
     x = Conv2D(128, 4, **conv_args)(x)

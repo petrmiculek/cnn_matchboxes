@@ -5,6 +5,12 @@ https://colab.research.google.com/drive/1F28FEGGLmy8-jW9IaOo60InR9VQtPbmG
 
 """
 
+
+# disable profiling-related-errors
+def profile(x):
+    return x
+
+
 # stdlib
 import os
 import sys
@@ -25,6 +31,10 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from IPython.display import Image, display
 
+# hacky, just for profiling
+sys.path.extend(['/home/petrmiculek/Code/light_matches',
+                 '/home/petrmiculek/Code/light_matches/src',
+                 '/home/petrmiculek/Code/light_matches/src_util'])
 # local files
 import models
 import model_ops
@@ -36,20 +46,25 @@ from src_util.general import safestr, DuplicateStream
 from logging_results import log_model_info
 
 
+# when profiling disabled
+# def profile(x):
+#     return x
+
+@profile
 def run(model_builder, model_kwargs={}, use_small_ds=True, augment=False, train=True):
     """
     # execute if running in Py console
-    model_builder = models.dilated_32x_exp2
+    model_builder = models.dilated_64x_exp2
     model_kwargs={}
-    use_small_ds=True
+    use_small_ds=False
     augment=False
     train = True
     show = True
 
     """
     # for batch-running
-    show = False
     try:
+        show = False
         dim = 64  # training sample dim - not really
         scale = 0.5
 
@@ -64,28 +79,14 @@ def run(model_builder, model_kwargs={}, use_small_ds=True, augment=False, train=
 
         time = safestr(datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
 
-        print(f'{tf.__version__=}')
-        gpus = tf.config.list_physical_devices('GPU')
-        if len(gpus) == 0:
-            print('no GPU available')
-            sys.exit(0)
-
-        tf.config.experimental.set_memory_growth(gpus[0], True)
-
-
         """ Load dataset """
         train_ds, class_names, class_weights = get_dataset(data_dir)
-        val_ds, _, _ = get_dataset(data_dir + '_val')
+        val_ds, _, _ = get_dataset(data_dir + '_val_easy')
         num_classes = len(class_names)
-
-        # tf.executing_eagerly()
-        # tf.config.experimental_functions_run_eagerly()
-        # tf.config.experimental_run_functions_eagerly(True)
-        # tf.config.experimental_functions_run_eagerly()
-        # tf.executing_eagerly()
 
         """ Create/Load a model """
         if train:
+
             base_model, model, data_augmentation, callbacks = model_ops.build_new_model(model_builder,
                                                                                         model_kwargs,
                                                                                         num_classes,
@@ -94,7 +95,7 @@ def run(model_builder, model_kwargs={}, use_small_ds=True, augment=False, train=
                                                                                         checkpoint_path=checkpoint_path,
                                                                                         bg_samples=bg_samples)
         else:
-            load_model_name = 'dilated20210309161954_full'  # trained on 500bg
+            load_model_name = 'dilated_64x_exp2_2021-03-19-02-11-52_full'  # trained on 500bg
             config = os.path.join('outputs', load_model_name, 'model_config.json')
             weights = os.path.join('models_saved', load_model_name)
 
@@ -116,7 +117,7 @@ def run(model_builder, model_kwargs={}, use_small_ds=True, augment=False, train=
         epochs_trained = 0
 
         if train:
-            epochs = 100
+            epochs = 10
 
             """ Train the model"""
             history = model.fit(
@@ -148,7 +149,7 @@ def run(model_builder, model_kwargs={}, use_small_ds=True, augment=False, train=
                                      show=show, misclassified=True, val=True)
         visualize_results(model, train_ds, class_names, epochs_trained, output_location=output_location, show=show)
 
-        if val_accu < 80.0:  # %
+        if val_accu < 90.0:  # %
             print('Val accu too low:', val_accu)
             # sys.exit(0)
 
@@ -166,6 +167,25 @@ def run(model_builder, model_kwargs={}, use_small_ds=True, augment=False, train=
         print(ex)
 
 
+def tf_init():
+    print(f'{tf.__version__=}')
+    gpus = tf.config.list_physical_devices('GPU')
+    if len(gpus) == 0:
+        print('no GPU available')
+        sys.exit(0)
+    tf.config.experimental.set_memory_growth(gpus[0], True)
+
+    # debugging
+    # tf.executing_eagerly()
+    # tf.config.experimental_functions_run_eagerly()
+    # tf.config.experimental_run_functions_eagerly(True)
+    # tf.config.experimental_functions_run_eagerly()
+    # tf.executing_eagerly()
+
+
 if __name__ == '__main__':
-    # run(models.fcn_residual_32x_18l, use_small_ds=True, augment=False)
+
+    tf_init()
+
+    run(models.dilated_64x_exp2, use_small_ds=True, augment=False, train=False)
     pass

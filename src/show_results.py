@@ -19,6 +19,12 @@ from src_util.labels import load_labels
 from logging_results import log_full_img_pred_losses
 
 
+# disable profiling-related-errors
+def profile(x):
+    return x
+
+
+@profile
 def confusion_matrix(model_name, class_names, epochs_trained, labels,
                      predictions, output_location=None, show=True,
                      val=False, normalize=True):
@@ -62,12 +68,17 @@ def confusion_matrix(model_name, class_names, epochs_trained, labels,
     plt.close(fig_cm.figure)
 
 
+@profile
 def misclassified_regions(imgs, labels, class_names, predictions,
                           false_pred, output_location=None, show=True):
     """Show misclassified regions
 
     # todo alternative version with grid-like output
     """
+
+    if len(false_pred) > 500:
+        print('too many misclassified regions, refusing to generate')
+        return
 
     for i, idx in enumerate(false_pred):
         label_true = class_names[labels[idx]]
@@ -82,12 +93,6 @@ def misclassified_regions(imgs, labels, class_names, predictions,
         if output_location:
             # noinspection PyUnboundLocalVariable
             fig_location = os.path.join(output_location, '{}_{}_x_{}'.format(i, label_true, label_predicted))
-
-            # should not be needed as the dir is created in caller (visualize_results)
-            # d = os.path.dirname(fig_location)
-            # if d and not os.path.isdir(d):
-            #     os.makedirs(d)
-
             fig.axes.figure.savefig(fig_location, bbox_inches='tight')
 
         if show:
@@ -97,6 +102,7 @@ def misclassified_regions(imgs, labels, class_names, predictions,
 
 
 # noinspection PyUnreachableCode
+@profile
 def visualize_results(model, dataset, class_names, epochs_trained,
                       output_location=None, show=False, misclassified=False, val=False):
     """Show misclassified regions and confusion matrix
@@ -117,6 +123,7 @@ def visualize_results(model, dataset, class_names, epochs_trained,
     """Dataset processing"""
     imgs = []
     labels = []
+    preds = []
 
     for batch in list(dataset):
         imgs.append(batch[0].numpy())
@@ -156,7 +163,7 @@ def visualize_results(model, dataset, class_names, epochs_trained,
     if val:
         print('validation:')
 
-    print('Accuracy: {0:0.2g}%'.format(accuracy))
+    print('Accuracy: {0:0.3g}%'.format(accuracy))
     print('Prediction types:\n',
           '\tConfident: {}\n'.format(confident),
           '\tUndecided: {}'.format(undecided))
@@ -218,11 +225,12 @@ def get_image_as_batch(img_path, scale=1.0, center_crop_fraction=1.0):
         low = (1 - center_crop_fraction) / 2
         high = (1 + center_crop_fraction) / 2
         img = img[int(img.shape[0] * low): int(img.shape[0] * high),
-                  int(img.shape[1] * low): int(img.shape[1] * high),
-                  :]
+              int(img.shape[1] * low): int(img.shape[1] * high),
+              :]
 
     img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
-    img = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))  # reversed indices, OK
+    img = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)),
+                    interpolation=cv.INTER_AREA)  # reversed indices, OK
     img_batch = np.expand_dims(img, 0)
     return img_batch, orig_size
 
@@ -272,8 +280,8 @@ def full_img_pred_error(predictions, img_path, file_labels, class_names, base_mo
 
     """
     min_dist_background = 2.0
-    min_dist_background_penalty = 100.0
-    no_such_cat_penalty = 1e5
+    min_dist_background_penalty = 1e3
+    no_such_cat_penalty = 1e6
 
     # file_labels = rescale_file_labels(file_labels)
     file_labels_merged = np.vstack([v for v in file_labels.values()])
@@ -349,17 +357,24 @@ def rescale_file_labels(file_labels, orig_img_size, scale, model_crop_delta, cen
             # p = np.array(pos) * scale  # numpy way
             # p = p - center_crop_diff - model_crop_delta // 2
 
-            p = int(pos[0]) * scale, int(pos[1]) * scale  # 3024 -> 1512
-            center_crop_diff = orig_img_size[0] * scale * (1 - center_crop_fraction) // 2, orig_img_size[1] * scale * (1 - center_crop_fraction) // 2
-            p = p[0] - center_crop_diff[0], p[1] - center_crop_diff[1]  # 1512 - 378 -> 1134
+            p = int(pos[0]) * scale, \
+                int(pos[1]) * scale  # 3024 -> 1512
 
-            p = p[0] - model_crop_delta // 2, p[1] - model_crop_delta // 2  #
+            center_crop_diff = orig_img_size[0] * scale * (1 - center_crop_fraction) // 2, \
+                               orig_img_size[1] * scale * (1 - center_crop_fraction) // 2
+
+            p = p[0] - center_crop_diff[0], \
+                p[1] - center_crop_diff[1]  # 1512 - 378 -> 1134
+
+            p = p[0] - model_crop_delta // 2, \
+                p[1] - model_crop_delta // 2  #
             new_l.append(p)
         new[cat] = new_l
 
     return new
 
 
+@profile
 def predict_full_image(base_model, class_names, labels, img_path, output_location=None,
                        show=True, maxes_only=False, undecided_only=False):
     """Show predicted heatmaps for full image
@@ -401,7 +416,8 @@ def predict_full_image(base_model, class_names, labels, img_path, output_locatio
             file_labels = file_labels[0]
             file_labels = rescale_file_labels(file_labels, orig_size, scale, model_crop_delta, center_crop_fraction)
 
-            losses_sum, category_losses = full_img_pred_error(predictions, img_path, file_labels, class_names, base_model)
+            losses_sum, category_losses = full_img_pred_error(predictions, img_path, file_labels, class_names,
+                                                              base_model)
             category_titles = category_losses
             plots_title = str(losses_sum // 1e6) + 'M'
 
@@ -411,26 +427,22 @@ def predict_full_image(base_model, class_names, labels, img_path, output_locatio
             plots_title = ''
             print(e)
 
+    # save_predictions_cv(predictions, img, img_path, output_location)
     display_predictions(predictions, img, img_path, category_titles, plots_title,
                         show=show, output_location=output_location, superimpose=True)
 
 
-def display_predictions(predictions, img, img_path, class_names, title='', heatmap_alpha=0.7, show=True,
+@profile
+def display_predictions(predictions, img, img_path, class_names, title='', show=True,
                         output_location=None, superimpose=False):
     # Plot predictions as heatmaps superimposed on input image
-    # predictions = np.square(predictions)  # todo note down comparison y/n
-    predictions = np.uint8(255 * predictions)
-    class_activations = []
 
-    for i in range(8):
-        pred = np.stack((predictions[:, :, i],) * 3, axis=-1)  # 2d to grayscale (R=G=B)
-        pred = cv.applyColorMap(pred, cv.COLORMAP_VIRIDIS)
-        pred = cv.cvtColor(pred, cv.COLOR_BGR2RGB)
-        if superimpose:
-            pred = cv.addWeighted(pred, heatmap_alpha, img, 1 - heatmap_alpha, gamma=0)
-        class_activations.append(pred)
+    class_activations = postprocess_predictions(img, predictions, superimpose)
 
-    class_activations.append(img)
+    if output_location:
+        os.makedirs(output_location, exist_ok=True)
+        fig_location = name_image_saving(img_path, output_location)
+
     subplot_titles = np.append(class_names, 'full-image')
 
     # Plot heatmaps
@@ -447,14 +459,93 @@ def display_predictions(predictions, img, img_path, class_names, title='', heatm
         fig.show()
 
     if output_location:
-        os.makedirs(output_location, exist_ok=True)
-        img_path_no_suffix = safestr(img_path[0:img_path.rfind('.')])
-        fig_location = os.path.join(output_location, 'heatmap_{}.png'.format(img_path_no_suffix))
         fig.savefig(fig_location, bbox_inches='tight')
-
     plt.close(fig)
 
 
+def name_image_saving(img_path, output_location):
+    img_path_no_suffix = safestr(img_path[0:img_path.rfind('.')])
+    fig_location = os.path.join(output_location, 'heatmap_{}.png'.format(img_path_no_suffix))
+    return fig_location
+
+
+@profile
+def postprocess_predictions(img, predictions, superimpose=False):
+    predictions = np.uint8(255 * predictions)
+    class_activations = []
+    heatmap_alpha = 0.7
+    for i in range(8):
+        # pred = np.stack((predictions[:, :, i],) * 3, axis=-1)  # 2d to grayscale (R=G=B)
+        pred = cv.cvtColor(predictions[:, :, i], cv.COLOR_GRAY2RGB)
+        pred = cv.applyColorMap(pred, cv.COLORMAP_VIRIDIS)
+        pred = cv.cvtColor(pred, cv.COLOR_BGR2RGB)
+        if superimpose:
+            pred = cv.addWeighted(pred, heatmap_alpha, img, 1 - heatmap_alpha, gamma=0)
+        class_activations.append(pred)
+    class_activations.append(img)
+    return class_activations
+
+
+@profile
+def gallery(array, ncols=3):
+    """
+    https://stackoverflow.com/questions/42040747/more-idiomatic-way-to-display-images-in-a-grid-with-numpy
+    :param array:
+    :param ncols:
+    :return:
+    """
+
+    nindex, height, width, intensity = array.shape
+    nrows = nindex // ncols
+    assert nindex == nrows * ncols
+    # -> [H * rows, W * cols, C]
+    result = (array.reshape(nrows, ncols, height, width, intensity)
+              .swapaxes(1, 2)
+              .reshape(height * nrows, width * ncols, intensity))
+    return result
+
+
+@profile
+def save_predictions_cv(predictions, img, img_path, output_location):
+    class_activations = postprocess_predictions(img, predictions, superimpose=False)
+
+    # img = cv.resize(img, (predictions.shape[0], predictions.shape[1]))
+    class_activations = np.stack(np.vstack([class_activations]), axis=0)
+
+    class_activations = gallery(class_activations)
+
+    fig_location = name_image_saving(img_path, output_location)
+
+    cv.imwrite(fig_location, class_activations)
+
+
+def tile(arr, nrows, ncols):
+    """
+    unused
+
+    https://stackoverflow.com/questions/42040747/more-idiomatic-way-to-display-images-in-a-grid-with-numpy
+
+    Args:
+        arr: HWC format array
+        nrows: number of tiled rows
+        ncols: number of tiled columns
+    """
+    h, w, c = arr.shape
+    out_height = nrows * h
+    out_width = ncols * w
+    chw = np.moveaxis(arr, (0, 1, 2), (1, 2, 0))
+
+    if c < nrows * ncols:
+        chw = chw.reshape(-1).copy()
+        chw.resize(nrows * ncols * h * w)
+
+    return (chw
+            .reshape((nrows, ncols, h, w))
+            .swapaxes(1, 2)
+            .reshape(out_height, out_width))
+
+
+@profile
 def show_layer_activations(model, data_augmentation, ds, class_names, show=True, output_location=None):
     """Predict single cutout and show network's layer activations
 
@@ -519,15 +610,8 @@ def show_layer_activations(model, data_augmentation, ds, class_names, show=True,
         out_of_range_count = 0
         total_count = 0
 
-        # if 'batch_normalization' not in layer_name and layer_name not in layer_names[-3:-1]:
-        #     continue
-
         n_features = layer_activation.shape[-1]  # Number of features in the feature map
         size = layer_activation.shape[1]  # The feature map has shape (1, size, size, n_features).
-
-        # if size == 1:  # caused top == bottom range problems
-        #     print(f'{layer_name} {n_features=}')
-        #     continue
 
         n_cols = ceil(n_features / images_per_row)  # Tiles the activation channels in this matrix
         display_grid = np.zeros((size * n_cols, images_per_row * size))
@@ -535,10 +619,6 @@ def show_layer_activations(model, data_augmentation, ds, class_names, show=True,
         for col in range(n_cols):  # Tiles each filter into a big horizontal grid
             for row in range(min(images_per_row, n_features)):
                 channel_image = layer_activation[0, :, :, col * images_per_row + row]
-
-                # don't normalize so as to keep proportions
-                # channel_image -= np.mean(channel_image)
-                # channel_image /= np.std(channel_image)
 
                 channel_image *= 64
                 channel_image += 128
@@ -551,7 +631,7 @@ def show_layer_activations(model, data_augmentation, ds, class_names, show=True,
 
                 channel_image = np.clip(channel_image, 0, 255).astype('uint8')
                 display_grid[col * size: (col + 1) * size,
-                row * size: (row + 1) * size] = channel_image
+                             row * size: (row + 1) * size] = channel_image
 
         scale = 1. / size
         fig = plt.figure(figsize=(scale * display_grid.shape[1],
@@ -571,6 +651,7 @@ def show_layer_activations(model, data_augmentation, ds, class_names, show=True,
         # print(f'{layer_name}: {out_of_range_count=} / {total_count}')
 
 
+@profile
 def error_location(predictions, img, img_path, file_labels, class_names, output_location=None, show=True):
     """Attribute full image error in full image predictions
 
@@ -621,7 +702,7 @@ def error_location(predictions, img, img_path, file_labels, class_names, output_
     # tst expected to be in [0 .. 1] range,
     tst /= np.max(tst)
     # but it would be barely visible like that
-    tst *= 5
+    tst *= 10
 
     # sums = np.sum(tst, axis=(0, 1))
 
@@ -629,8 +710,10 @@ def error_location(predictions, img, img_path, file_labels, class_names, output_
         output_location = os.path.join(output_location, 'err_distribution')
 
     display_predictions(tst, img, img_path, titles, output_location=output_location, show=show)
+    save_predictions_cv(tst, img, img_path, output_location)
 
 
+@profile
 def show_augmentation(data_augmentation, dataset):
     """Show grid of augmentation results
 
@@ -663,6 +746,7 @@ def show_augmentation(data_augmentation, dataset):
     cols = []
 
     for i in range(len(imgs) // rows):
+        # make a column [W, N * H]
         imgs_col = np.vstack(imgs[rows * i:(i + 1) * rows])
         pred_col = np.vstack(pred[rows * i:(i + 1) * rows])
         col = np.hstack((imgs_col, pred_col))
@@ -672,7 +756,3 @@ def show_augmentation(data_augmentation, dataset):
 
     pi = PIL.Image.fromarray(grid_img.astype('uint8'))
     pi.show()
-
-    # figure makes images too small
-    # fig = plt.imshow(grid_img.astype("uint8"))
-    # fig.axes.figure.show()

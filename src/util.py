@@ -27,8 +27,9 @@ def pred_reshape(y_pred):
 
 
 class Scce(tf.losses.SparseCategoricalCrossentropy):
+    # todo unused
     def call(self, y_true, y_pred):
-        tf.print(tf.shape(y_true), y_pred)
+        # tf.print(tf.shape(y_true), tf.shape(y_pred))
         return super(Scce, self).call(y_true, y_pred)
 
 
@@ -103,13 +104,17 @@ class RandomColorDistortion(tf.keras.layers.Layer):
         self.hue = hue_delta
         self.saturation_range = saturation_range
 
+
+    @tf.function
     def call(self, images, training=None):
+        if training is None:
+            training = K.learning_phase()
         if not training:
             return images
 
         images = tf.image.random_contrast(images, self.contrast_range[0], self.contrast_range[1])
         images = tf.image.random_brightness(images, self.brightness)
-        # images = tf.image.random_hue(images, self.hue)  # todo off for now
+        images = tf.image.random_hue(images, self.hue)
         images = tf.image.random_saturation(images, self.saturation_range[0], self.saturation_range[1])
         images = tf.clip_by_value(images, 0, 255)
         return images
@@ -123,4 +128,4 @@ class RandomColorDistortion(tf.keras.layers.Layer):
             'saturation_range': self.saturation_range,
         }
 
-    # from_config() needs not to be overriden=reimplemented
+    # from_config() needs not to be reimplemented

@@ -4,16 +4,16 @@ import os
 import pathlib
 import random
 import sys
+from math import sqrt
+from collections import defaultdict
 
 import cv2 as cv
 import numpy as np
 import pandas as pd
-
-from math import sqrt
-from collections import defaultdict
+import scipy
 from scipy.spatial.distance import cdist
 
-from labels import load_labels, img_dims
+from labels import load_labels
 
 """
 Dataset prep:
@@ -53,24 +53,15 @@ python src_util/image_regions.py -b -c 128 -r -p 100 -s 50 -v
 """
 
 random.seed(1234)
-
-
-# different from show_images_labelled -- investigate
-def draw_cross(img, center_pos, line_length=20, color=(255, 0, 0), width=4):
-    global scale
-    width = max(int(width * scale), 1)
-    line_length = int(line_length * scale)
-    x, y = center_pos[0], center_pos[1]
-
-    cv.line(img, (x - line_length, y - line_length), (x + line_length, y + line_length), color, width)
-    cv.line(img, (x + line_length, y - line_length), (x - line_length, y + line_length), color, width)
+np.random.seed(1234)
 
 
 def crop_out(img, x1, y1, x2, y2):
     try:
         cropped = img[x1:x2, y1:y2].copy()
-    except IndexError as ex:
+    except Exception as ex:
         print(ex)
+        print(img is None, x1, y1, x2, y2)
         cropped = None
 
     return cropped
@@ -150,10 +141,8 @@ if __name__ == '__main__':
     # radius -> full image, padding -> center
     if args.reduced_sampling_area:
         cutout_padding = padding
-        shift_top = 500
     else:
         cutout_padding = radius
-        shift_top = 0
 
     # in/out folders
     input_folder = 'sirky' + '_val' * args.val
@@ -161,8 +150,8 @@ if __name__ == '__main__':
     output_path = 'datasets' + os.sep + run_params + '_val' * args.val
 
     labels_file = input_folder + os.sep + 'labels.csv'
-    bg_csv_file = output_path + os.sep + 'background' + '_val' * args.val + '.csv'
-    merged_labels_bg_csv = output_path + os.sep + 'labels_with_bg' + '_val' * args.val + '.csv'
+    bg_csv_file = output_path + os.sep + 'background' + '.csv'
+    merged_labels_bg_csv = output_path + os.sep + 'labels_with_bg' + '.csv'
 
     if \
             not os.path.isdir(input_folder) or \
@@ -182,13 +171,10 @@ if __name__ == '__main__':
 
         img = cv.imread(input_folder + os.sep + file)
         orig_size = img.shape[1], img.shape[0]
-        img = cv.resize(img, (int(img.shape[1] * scale),
-                              int(img.shape[0] * scale)))  # reversed indices, OK
-
-        file_labels = [label
-                       for cat in labels[file]
-                       for label in labels[file][cat]]
-        file_labels = np.array(file_labels, dtype=np.int)
+        img = cv.resize(img,
+                        (int(img.shape[1] * scale),
+                         int(img.shape[0] * scale)),
+                        interpolation=cv.INTER_AREA)  # reversed indices, OK
 
         if args.foreground:
             # generating regions from labels = keypoints
@@ -209,6 +195,12 @@ if __name__ == '__main__':
 
                     tmp = cv.imwrite(category_folder + os.sep + region_filename, region)
 
+        file_labels = [label
+                       for cat in labels[file]
+                       for label in labels[file][cat]]
+
+        file_labels_scaled = (np.array(file_labels, dtype=np.intc) * scale).astype(np.intc)
+
         if args.background:
             # generating regions from the background
             category = 'background'
@@ -216,20 +208,32 @@ if __name__ == '__main__':
                 os.makedirs(output_path + os.sep + category, exist_ok=True)
 
             samples = 2 * args.per_image_samples  # generate more than needed, some might get filtered
+
             # try normal distribution?
+            # scipy.stats.norm.fit(file_labels).rvs(samples).astype(np.intc)
+
+            if args.reduced_sampling_area:
+                mean_offset = (file_labels_scaled.mean(axis=0) - np.array(orig_size) / 2).astype(np.intc)
+            else:
+                mean_offset = [0, 0]
+
             coords = np.vstack([
-                np.random.randint(cutout_padding - shift_top, img.shape[0] - cutout_padding, samples),
-                np.random.randint(cutout_padding, img.shape[1] - cutout_padding, samples)
+                np.random.randint(cutout_padding, img.shape[0] - cutout_padding, samples) + mean_offset[0],
+                np.random.randint(cutout_padding, img.shape[1] - cutout_padding, samples) + mean_offset[1]
             ]).T  # <- note the .T
 
-            min_dists = cdist(coords, np.array(file_labels)).min(axis=1)
+            min_dists = cdist(coords, file_labels_scaled).min(axis=1)
             indices = np.where(min_dists > region_side // 4, True, False)
             coords = coords[indices]
 
             if len(coords) < args.per_image_samples:
-                print('Too few points that are far enough', file=sys.stderr)
+                print('Too few points that are far enough({})'.format(len(coords)), file=sys.stderr)
 
             coords = coords[:args.per_image_samples]
+
+            print('\t', mean_offset)
+            print(coords)
+            # continue
 
             # save background positions to a csv file (same structure as keypoints)
             with open(bg_csv_file, 'a') as csvfile:
@@ -257,5 +261,4 @@ if __name__ == '__main__':
             merged = pd.concat([labels_csv, bg_csv], ignore_index=True)
 
             merged.to_csv(merged_labels_bg_csv, header=False, index=False, encoding='utf-8')
-
-# todo warning - manually created background labels won't be in background.csv
+            # todo warning - manually created background labels won't be in background.csv
