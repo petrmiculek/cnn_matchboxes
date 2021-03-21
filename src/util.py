@@ -40,6 +40,7 @@ class Accu(tf.metrics.SparseCategoricalAccuracy):
 
         # make prediction fail if it is undecided (all probabilities are 1/num_classes = 0.125)
         cond = tf.expand_dims(tf.math.equal(tf.math.reduce_max(y_pred_reshaped, axis=1), 0.125), axis=1)
+        # tf.cast(7, dtype=tf.int64)
         y_avoid_free = tf.where(cond, 7.0, y_true)
 
         return super(Accu, self).update_state(y_avoid_free, y_pred_reshaped, sample_weight)

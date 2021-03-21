@@ -20,7 +20,6 @@ Dataset prep:
 
 padding x radius for background
 
-todo cdist instead of euclid_dist
 """
 
 """
@@ -46,7 +45,6 @@ python src_util/image_regions.py -b -c 128 -r -p 100 -s 50
 python src_util/image_regions.py -f -b -c 128 -p 100 -s 50 -v
 python src_util/image_regions.py -b -c 128 -r -p 100 -s 50 -v
 
-## 128x
 # bg500
 python src_util/image_regions.py -f -b -c 128 -p 500 -s 50
 python src_util/image_regions.py -b -c 128 -r -p 500 -s 50
@@ -64,12 +62,12 @@ random.seed(1234)
 np.random.seed(1234)
 
 
-def crop_out(img, x1, y1, x2, y2):
+def crop_out(img, low_x, low_y, high_x, high_y):
     try:
-        cropped = img[x1:x2, y1:y2].copy()
+        cropped = img[low_x:high_x, low_y:high_y].copy()  # x,y
     except Exception as ex:
         print(ex)
-        print(img is None, x1, y1, x2, y2)
+        print(img is None, f'{low_x}-{high_x}, {low_y}-{high_y}')
         cropped = None
 
     return cropped
@@ -78,13 +76,13 @@ def crop_out(img, x1, y1, x2, y2):
 def get_boundaries(img, center_pos, radius=32):
     """
 
-    :param img: [y, x]
+    :param img:
     :param center_pos: [x, y]
     :param radius:
     :return: top-left and bottom-right coordinates for region
     """
 
-    # numpy image [y, x]
+    # numpy image
     dim_x = img.shape[0]
     dim_y = img.shape[1]
 
@@ -99,17 +97,8 @@ def get_boundaries(img, center_pos, radius=32):
 
 
 def cut_out_around_point(img, center_pos, radius=32):
-    x1, x2, y1, y2 = get_boundaries(img, center_pos, radius)
-    return crop_out(img, x1, x2, y1, y2)
-
-
-# not useful for training
-# def random_offset(center_pos, maxoffset=10):
-#     return center_pos[0] + randint(-maxoffset, maxoffset), center_pos[1] + randint(-maxoffset, maxoffset)
-
-
-def euclid_dist(pos1, pos2):
-    return sqrt((pos1[0] - pos2[0]) ** 2 + (pos1[1] - pos2[1]) ** 2)
+    low_x, low_y, high_x, high_y = get_boundaries(img, center_pos, radius)
+    return crop_out(img, low_x, low_y, high_x, high_y)
 
 
 if __name__ == '__main__':
@@ -145,7 +134,7 @@ if __name__ == '__main__':
     region_side = args.cutout_size
     radius = args.cutout_size // 2
 
-    padding = (4032 * scale) // 3
+    padding = int((4032 * scale) / 5)
     # radius -> full image, padding -> center
     if args.reduced_sampling_area:
         cutout_padding = padding
@@ -176,13 +165,19 @@ if __name__ == '__main__':
     # can do 100 background points per image
 
     for file in labels:  # dict of labelled_files
-
-        img = cv.imread(input_folder + os.sep + file)
-        orig_size = img.shape[1], img.shape[0]
-        img = cv.resize(img,
-                        (int(img.shape[1] * scale),
-                         int(img.shape[0] * scale)),
-                        interpolation=cv.INTER_AREA)  # reversed indices, OK
+        """
+        Coordinate conventions:
+        CV -> y,x
+        NumPy -> x,y
+        
+        img = cv
+        labels = x,y = np
+        
+        everything is done in (x,y)-space up to the image-cropout itself (which is called with y,x)
+        """
+        img = cv.imread(input_folder + os.sep + file)  # -> y,x
+        orig_size = img.shape[1], img.shape[0]  # y,x -> x,y
+        img = cv.resize(img, None, fx=0.5, fy=0.5, interpolation=cv.INTER_AREA)  # -> y,x
 
         if args.foreground:
             # generating regions from labels = keypoints
@@ -193,18 +188,20 @@ if __name__ == '__main__':
                     os.makedirs(category_folder, exist_ok=True)
 
                 for label_pos in labels[file][category]:  # list of labels
-                    label_pos_scaled = int(int(label_pos[1]) * scale), int(int(label_pos[0]) * scale)
-                    # ^ inner int() does parsing, not rounding
-                    region = cut_out_around_point(img, label_pos_scaled, radius)
+                    label_pos_scaled = np.array(label_pos, dtype=np.intc) * scale  # x,y
+                    label_pos_scaled = label_pos_scaled.astype(dtype=np.intc)
+
+                    region = cut_out_around_point(img, (label_pos_scaled[1], label_pos_scaled[0]), radius)
 
                     # save image
-                    region_filename = file.split('.')[0] + '_(' + str(label_pos[0]) + ',' + str(label_pos[1]) + ').jpg'
+                    filename_no_suffix = file.split('.')[0]
+                    region_filename = f'{filename_no_suffix}_({label_pos[0]},{label_pos[1]}).jpg'
 
                     tmp = cv.imwrite(category_folder + os.sep + region_filename, region)
 
         file_labels = [label
                        for cat in labels[file]
-                       for label in labels[file][cat]]
+                       for label in labels[file][cat]]  # -> x,y
 
         file_labels_scaled = (np.array(file_labels, dtype=np.intc) * scale).astype(np.intc)
 
@@ -214,21 +211,34 @@ if __name__ == '__main__':
             if not os.path.isdir(output_path + os.sep + category):
                 os.makedirs(output_path + os.sep + category, exist_ok=True)
 
-            samples = 2 * args.per_image_samples * (args.cutout_size // 32)  # generate more than needed, some might get filtered
+            # generate more samples than needed, some might get filtered due to proximity
+            samples = 2 * args.per_image_samples * (args.cutout_size // 32)
 
             # try normal distribution?
             # scipy.stats.norm.fit(file_labels).rvs(samples).astype(np.intc)
 
-            if args.reduced_sampling_area:
-                # file labels' offset from center of the image
-                mean_offset = (file_labels_scaled.mean(axis=0) - np.array(orig_size) * scale / 2).astype(np.intc)
-            else:
-                mean_offset = [0, 0]
+            mins = np.min(file_labels_scaled, axis=0)
+            maxs = np.max(file_labels_scaled, axis=0)
+
+            min_x = np.min([mins[0], cutout_padding])
+            max_x = np.max([maxs[0], img.shape[1] - cutout_padding])
+
+            min_y = np.min([mins[1], cutout_padding])
+            max_y = np.max([maxs[1], img.shape[0] - cutout_padding])
 
             coords = np.vstack([
-                np.random.randint(cutout_padding, img.shape[0] - cutout_padding, samples) + mean_offset[0],
-                np.random.randint(cutout_padding, img.shape[1] - cutout_padding, samples) + mean_offset[1]
+                np.random.randint(min_x, max_x, samples),
+                np.random.randint(min_y, max_y, samples)
             ]).T  # <- note the .T
+
+            assert min_x > 0
+            assert min_y > 0
+
+            # debug
+            # coords = np.vstack([
+            #     np.array([min_x, max_x]),
+            #     np.array([min_y, max_y]),
+            # ]).T.astype(np.intc)
 
             min_dists = cdist(coords, file_labels_scaled).min(axis=1)
             indices = np.where(min_dists > region_side // 2, True, False)
@@ -247,13 +257,14 @@ if __name__ == '__main__':
                 out_csv = csv.writer(csvfile, delimiter=',', quoting=csv.QUOTE_MINIMAL)
 
                 for pos in coords:  # how many background samples from image
-                    region_background = cut_out_around_point(img, pos, radius)
+                    region_background = cut_out_around_point(img, (pos[1], pos[0]), radius)
                     region_path = output_path + os.sep + category + os.sep  # per category folder
 
                     # since positions were generated already re-scaled, de-scale them when writing
-                    x, y = str(int(pos[1] / scale)), str(int(pos[0] / scale))
+                    x, y = (pos / scale).astype(np.intc)
 
-                    region_filename = file.split('.')[0] + '_(' + x + ',' + y + ').jpg'
+                    filename_no_suffix = file.split('.')[0]
+                    region_filename = f'{filename_no_suffix}_({x},{y}).jpg'
 
                     tmp = cv.imwrite(region_path + region_filename, region_background)
                     out_csv.writerow(['background', x, y, file, orig_size[0], orig_size[1]])

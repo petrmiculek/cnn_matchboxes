@@ -30,7 +30,7 @@ window_name = 'Q=Quit, A=Prev, D=Next'
 #     return randint(0, 255), randint(0, 255), randint(0, 255)
 
 
-def draw_cross(img, center_pos, line_length=20, color=(0, 0, 0), width=8, scale=1):
+def draw_cross(img, center_pos, line_length=20, color=(0, 0, 0), width=6, scale=1):
     width = int(width * scale)
     line_length = int(line_length * scale)
 
@@ -70,12 +70,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    print(f'{args.val=}, '
-          f'{args.background=}, '
-          f'{args.show=}, '
-          f'{args.cutout_size=}, '
-          f'{args.per_image_samples=} ')
-
     run_config = f'{args.cutout_size}x_050s_{args.per_image_samples}bg' \
                  + '_KPonly' * (not args.background) + '_val' * args.val
 
@@ -110,7 +104,7 @@ if __name__ == '__main__':
         'edge-top': (50, 255, 255),
         'edge-side': (255, 100, 50),
         'edge-bottom': (50, 255, 50),
-        'background': (200, 200, 200),
+        'background': (220, 220, 220),
     }
 
     if not args.show:
@@ -144,7 +138,7 @@ if __name__ == '__main__':
             file = labels_keys[i]
 
             img = cv.imread(image_input_folder + os.sep + file)
-            img = cv.resize(img, (0, 0), fx=scale, fy=scale)  # reversed indices, OK
+            img = cv.resize(img, None, fx=scale, fy=scale)  # reversed indices, OK
 
             # draw labels
             for category in labels[file]:  # dict of categories
