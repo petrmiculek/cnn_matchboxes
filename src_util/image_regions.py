@@ -77,8 +77,8 @@ def get_boundaries(img, center_pos, radius=32):
     """
 
     # numpy image [y, x]
-    dim_x = img.shape[1]
-    dim_y = img.shape[0]
+    dim_x = img.shape[0]
+    dim_y = img.shape[1]
 
     # value clipping
     x = max(center_pos[0], radius)
@@ -187,7 +187,7 @@ if __name__ == '__main__':
                 for label_pos in labels[file][category]:  # list of labels
                     label_pos_scaled = int(int(label_pos[1]) * scale), int(int(label_pos[0]) * scale)
                     # ^ inner int() does parsing, not rounding
-
+                    print(label_pos, '->', label_pos_scaled)
                     region = cut_out_around_point(img, label_pos_scaled, radius)
 
                     # save image
