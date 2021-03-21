@@ -14,11 +14,11 @@ def get_class_weights(class_counts_train):
     return dict(enumerate(class_weights))
 
 
-def profile(x):
-    return x
+# def profile(x):
+#     return x
 
 
-@profile
+# @pro file
 def get_dataset(data_dir):
     """
     Get dataset, class names and class weights
@@ -53,12 +53,12 @@ def get_dataset(data_dir):
 
     def configure_for_performance(ds):
         ds = ds.cache()
-        ds = ds.shuffle(buffer_size=1000, seed=const_seed)  # reshuffle_each_iteration=True
+        ds = ds.shuffle(buffer_size=1024, seed=const_seed)  # reshuffle_each_iteration=True
         ds = ds.batch(batch_size)
         ds = ds.prefetch(buffer_size=autotune)
         return ds
 
-    batch_size = 64
+    batch_size = 128
 
     dataset = tf.data.Dataset.list_files(os.path.join(data_dir, '*/*.jpg'), shuffle=True)
 

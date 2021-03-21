@@ -88,7 +88,8 @@ def get_callbacks(model, checkpoint_path='/tmp/checkpoint', bg_samples='_unknown
 
 def build_new_model(model_factory, model_kwargs, num_classes=8, augment=True, name_suffix='',
                     checkpoint_path='/tmp/checkpoint', bg_samples=100):
-    base_model, training_dim = model_factory(num_classes, name_suffix=name_suffix, **model_kwargs)
+
+    base_model, training_dim = model_factory(num_classes, **model_kwargs, name_suffix=name_suffix)
     data_augmentation = models.augmentation(aug=augment, crop_to=training_dim)
     model = tf.keras.Sequential([data_augmentation, base_model], name=base_model.name + '_full')
     compile_model(model)

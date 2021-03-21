@@ -60,8 +60,13 @@ if __name__ == '__main__':
     parser.add_argument('--show', '-s', action='store_true', default=False,
                         help="show images instead of saving")
 
-    # python src_util/images_labelled.py -b -c 64 -p 100
-    # python src_util/images_labelled.py -b -c 64 -p 100 -v
+    """
+    python src_util/images_labelled.py -b -c 64 -p 100
+    python src_util/images_labelled.py -b -c 64 -p 100 -v
+    python src_util/images_labelled.py -b -c 64 -p 500
+    python src_util/images_labelled.py -b -c 64 -p 500 -v
+    
+    """
 
     args = parser.parse_args()
 
@@ -82,7 +87,7 @@ if __name__ == '__main__':
     labels_path = 'datasets' + os.sep + run_config + os.sep + \
                   'labels_with_bg.csv' if args.background else 'labels.csv'
 
-    # labels_path = 'image_regions_64_050_bg500_val/labels_with_bg_val.csv'
+    # labels_path = 'image_regions_64_050_bg500/labels_with_bg.csv'
 
     if not os.path.isdir(output_folder):
         os.makedirs(output_folder, exist_ok=True)

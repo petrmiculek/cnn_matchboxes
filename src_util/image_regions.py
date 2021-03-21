@@ -32,11 +32,6 @@ python src_util/image_regions.py -b -c 64 -r -p 100 -s 50
 python src_util/image_regions.py -f -b -c 64 -p 100 -s 50 -v
 python src_util/image_regions.py -b -c 64 -r -p 100 -s 50 -v
 
-# bg250
-python src_util/image_regions.py -f -b -c 64 -p 250 -s 50
-python src_util/image_regions.py -b -c 64 -r -p 250 -s 50
-python src_util/image_regions.py -f -b -c 64 -p 250 -s 50 -v
-python src_util/image_regions.py -b -c 64 -r -p 250 -s 50 -v
 
 # bg500
 python src_util/image_regions.py -f -b -c 64 -p 500 -s 50
@@ -50,6 +45,19 @@ python src_util/image_regions.py -f -b -c 128 -p 100 -s 50
 python src_util/image_regions.py -b -c 128 -r -p 100 -s 50
 python src_util/image_regions.py -f -b -c 128 -p 100 -s 50 -v
 python src_util/image_regions.py -b -c 128 -r -p 100 -s 50 -v
+
+## 128x
+# bg500
+python src_util/image_regions.py -f -b -c 128 -p 500 -s 50
+python src_util/image_regions.py -b -c 128 -r -p 500 -s 50
+python src_util/image_regions.py -f -b -c 128 -p 500 -s 50 -v
+python src_util/image_regions.py -b -c 128 -r -p 500 -s 50 -v
+
+# bg250
+python src_util/image_regions.py -f -b -c 64 -p 250 -s 50
+python src_util/image_regions.py -b -c 64 -r -p 250 -s 50
+python src_util/image_regions.py -f -b -c 64 -p 250 -s 50 -v
+python src_util/image_regions.py -b -c 64 -r -p 250 -s 50 -v
 """
 
 random.seed(1234)
@@ -187,7 +195,6 @@ if __name__ == '__main__':
                 for label_pos in labels[file][category]:  # list of labels
                     label_pos_scaled = int(int(label_pos[1]) * scale), int(int(label_pos[0]) * scale)
                     # ^ inner int() does parsing, not rounding
-                    print(label_pos, '->', label_pos_scaled)
                     region = cut_out_around_point(img, label_pos_scaled, radius)
 
                     # save image
@@ -207,13 +214,14 @@ if __name__ == '__main__':
             if not os.path.isdir(output_path + os.sep + category):
                 os.makedirs(output_path + os.sep + category, exist_ok=True)
 
-            samples = 2 * args.per_image_samples  # generate more than needed, some might get filtered
+            samples = 2 * args.per_image_samples * (args.cutout_size // 32)  # generate more than needed, some might get filtered
 
             # try normal distribution?
             # scipy.stats.norm.fit(file_labels).rvs(samples).astype(np.intc)
 
             if args.reduced_sampling_area:
-                mean_offset = (file_labels_scaled.mean(axis=0) - np.array(orig_size) / 2).astype(np.intc)
+                # file labels' offset from center of the image
+                mean_offset = (file_labels_scaled.mean(axis=0) - np.array(orig_size) * scale / 2).astype(np.intc)
             else:
                 mean_offset = [0, 0]
 
@@ -223,7 +231,7 @@ if __name__ == '__main__':
             ]).T  # <- note the .T
 
             min_dists = cdist(coords, file_labels_scaled).min(axis=1)
-            indices = np.where(min_dists > region_side // 4, True, False)
+            indices = np.where(min_dists > region_side // 2, True, False)
             coords = coords[indices]
 
             if len(coords) < args.per_image_samples:
@@ -231,9 +239,8 @@ if __name__ == '__main__':
 
             coords = coords[:args.per_image_samples]
 
-            print('\t', mean_offset)
-            print(coords)
-            # continue
+            if np.any(coords < 0):
+                print('negative')
 
             # save background positions to a csv file (same structure as keypoints)
             with open(bg_csv_file, 'a') as csvfile:

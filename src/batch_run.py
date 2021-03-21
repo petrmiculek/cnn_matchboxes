@@ -2,6 +2,7 @@ import os
 import sys
 
 import tensorflow as tf
+from tensorboard.plugins.hparams import api as hp
 
 # hacky, just for profiling
 sys.path.extend(['/home/petrmiculek/Code/light_matches',
@@ -42,4 +43,20 @@ if __name__ == '__main__':
     # run(models.dilated_64x_exp2, use_small_ds=False, augment=True)
 
     #   20
-    run(models.dilated_64x_exp2, use_small_ds=False, augment=True)
+
+    for width in [8, 16]:
+        for pooling_freq in [1, 2]:
+            for pooling in ['max', 'None']:
+                model_kwargs = {'width': width,
+                                'pooling': pooling,
+                                'pooling_freq': pooling_freq}
+
+                run(models.dilated_64x_exp2, use_small_ds=True, augment=True, model_kwargs=model_kwargs)
+
+    for width in [8, 16]:
+        model_kwargs = {'width': width,
+                        'pooling': 'max',
+                        'pooling_freq': 1}
+
+        run(models.dilated_64x_exp2, use_small_ds=False, augment=True, model_kwargs=model_kwargs)
+

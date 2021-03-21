@@ -7,8 +7,8 @@ https://colab.research.google.com/drive/1F28FEGGLmy8-jW9IaOo60InR9VQtPbmG
 
 
 # disable profiling-related-errors
-def profile(x):
-    return x
+# def profile(x):
+#     return x
 
 
 # stdlib
@@ -30,6 +30,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from IPython.display import Image, display
+from tensorboard.plugins.hparams import api as hp
 
 # hacky, just for profiling
 sys.path.extend(['/home/petrmiculek/Code/light_matches',
@@ -50,7 +51,7 @@ from logging_results import log_model_info
 # def profile(x):
 #     return x
 
-@profile
+# @pro file
 def run(model_builder, model_kwargs={}, use_small_ds=True, augment=False, train=True):
     """
     # execute if running in Py console
@@ -86,7 +87,6 @@ def run(model_builder, model_kwargs={}, use_small_ds=True, augment=False, train=
 
         """ Create/Load a model """
         if train:
-
             base_model, model, data_augmentation, callbacks = model_ops.build_new_model(model_builder,
                                                                                         model_kwargs,
                                                                                         num_classes,
@@ -112,12 +112,13 @@ def run(model_builder, model_kwargs={}, use_small_ds=True, augment=False, train=
         sys.stdout = DuplicateStream(sys.stdout, out_stream)
 
         log_model_info(model, output_location)
+        print(model_kwargs)
 
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
         epochs_trained = 0
 
         if train:
-            epochs = 10
+            epochs = 100
 
             """ Train the model"""
             history = model.fit(
@@ -151,6 +152,7 @@ def run(model_builder, model_kwargs={}, use_small_ds=True, augment=False, train=
 
         if val_accu < 90.0:  # %
             print('Val accu too low:', val_accu)
+            return
             # sys.exit(0)
 
         """Full image prediction"""
@@ -187,5 +189,5 @@ if __name__ == '__main__':
 
     tf_init()
 
-    run(models.dilated_64x_exp2, use_small_ds=True, augment=False, train=False)
+    # run(models.dilated_64x_exp2, use_small_ds=True, augment=False, train=False)
     pass

@@ -20,11 +20,12 @@ from logging_results import log_full_img_pred_losses
 
 
 # disable profiling-related-errors
-def profile(x):
-    return x
+# def profile(x):
+#     return x
 
 
-@profile
+# @pro file
+
 def confusion_matrix(model_name, class_names, epochs_trained, labels,
                      predictions, output_location=None, show=True,
                      val=False, normalize=True):
@@ -68,7 +69,8 @@ def confusion_matrix(model_name, class_names, epochs_trained, labels,
     plt.close(fig_cm.figure)
 
 
-@profile
+# @pro file
+
 def misclassified_regions(imgs, labels, class_names, predictions,
                           false_pred, output_location=None, show=True):
     """Show misclassified regions
@@ -102,7 +104,8 @@ def misclassified_regions(imgs, labels, class_names, predictions,
 
 
 # noinspection PyUnreachableCode
-@profile
+# @pro file
+
 def visualize_results(model, dataset, class_names, epochs_trained,
                       output_location=None, show=False, misclassified=False, val=False):
     """Show misclassified regions and confusion matrix
@@ -374,7 +377,8 @@ def rescale_file_labels(file_labels, orig_img_size, scale, model_crop_delta, cen
     return new
 
 
-@profile
+# @pro file
+
 def predict_full_image(base_model, class_names, labels, img_path, output_location=None,
                        show=True, maxes_only=False, undecided_only=False):
     """Show predicted heatmaps for full image
@@ -432,7 +436,8 @@ def predict_full_image(base_model, class_names, labels, img_path, output_locatio
                         show=show, output_location=output_location, superimpose=True)
 
 
-@profile
+# @pro file
+
 def display_predictions(predictions, img, img_path, class_names, title='', show=True,
                         output_location=None, superimpose=False):
     # Plot predictions as heatmaps superimposed on input image
@@ -441,12 +446,12 @@ def display_predictions(predictions, img, img_path, class_names, title='', show=
 
     if output_location:
         os.makedirs(output_location, exist_ok=True)
-        fig_location = name_image_saving(img_path, output_location)
+        fig_location = name_image_saving(img_path, output_location) + '.png'
 
     subplot_titles = np.append(class_names, 'full-image')
 
     # Plot heatmaps
-    fig, axes = plt.subplots(nrows=3, ncols=3, figsize=(16, 14))
+    fig, axes = plt.subplots(nrows=3, ncols=3, figsize=(10, 8))  # 16, 14
     fig.suptitle('Heatmaps\n{}'.format(title))
     fig.subplots_adjust(right=0.85, left=0.05)
     for i in range(9):
@@ -464,19 +469,21 @@ def display_predictions(predictions, img, img_path, class_names, title='', show=
 
 
 def name_image_saving(img_path, output_location):
+    # sane location + filename, NO SUFFIX
     img_path_no_suffix = safestr(img_path[0:img_path.rfind('.')])
-    fig_location = os.path.join(output_location, 'heatmap_{}.png'.format(img_path_no_suffix))
+    fig_location = os.path.join(output_location, 'heatmap_{}'.format(img_path_no_suffix))
     return fig_location
 
 
-@profile
+# @pro file
+
 def postprocess_predictions(img, predictions, superimpose=False):
     predictions = np.uint8(255 * predictions)
+    # img = cv.cvtColor(img, cv.COLOR_RGB2BGR)
     class_activations = []
     heatmap_alpha = 0.7
     for i in range(8):
-        # pred = np.stack((predictions[:, :, i],) * 3, axis=-1)  # 2d to grayscale (R=G=B)
-        pred = cv.cvtColor(predictions[:, :, i], cv.COLOR_GRAY2RGB)
+        pred = cv.cvtColor(predictions[:, :, i], cv.COLOR_GRAY2BGR)
         pred = cv.applyColorMap(pred, cv.COLORMAP_VIRIDIS)
         pred = cv.cvtColor(pred, cv.COLOR_BGR2RGB)
         if superimpose:
@@ -486,7 +493,8 @@ def postprocess_predictions(img, predictions, superimpose=False):
     return class_activations
 
 
-@profile
+# @pro file
+
 def gallery(array, ncols=3):
     """
     https://stackoverflow.com/questions/42040747/more-idiomatic-way-to-display-images-in-a-grid-with-numpy
@@ -505,7 +513,8 @@ def gallery(array, ncols=3):
     return result
 
 
-@profile
+# @pro file
+
 def save_predictions_cv(predictions, img, img_path, output_location):
     class_activations = postprocess_predictions(img, predictions, superimpose=False)
 
@@ -514,7 +523,7 @@ def save_predictions_cv(predictions, img, img_path, output_location):
 
     class_activations = gallery(class_activations)
 
-    fig_location = name_image_saving(img_path, output_location)
+    fig_location = name_image_saving(img_path, output_location) + '.bmp'
 
     cv.imwrite(fig_location, class_activations)
 
@@ -545,7 +554,8 @@ def tile(arr, nrows, ncols):
             .reshape(out_height, out_width))
 
 
-@profile
+# @pro file
+
 def show_layer_activations(model, data_augmentation, ds, class_names, show=True, output_location=None):
     """Predict single cutout and show network's layer activations
 
@@ -651,7 +661,8 @@ def show_layer_activations(model, data_augmentation, ds, class_names, show=True,
         # print(f'{layer_name}: {out_of_range_count=} / {total_count}')
 
 
-@profile
+# @pro file
+
 def error_location(predictions, img, img_path, file_labels, class_names, output_location=None, show=True):
     """Attribute full image error in full image predictions
 
@@ -710,10 +721,11 @@ def error_location(predictions, img, img_path, file_labels, class_names, output_
         output_location = os.path.join(output_location, 'err_distribution')
 
     display_predictions(tst, img, img_path, titles, output_location=output_location, show=show)
-    save_predictions_cv(tst, img, img_path, output_location)
+    # save_predictions_cv(tst, img, img_path, output_location)
 
 
-@profile
+# @pro file
+
 def show_augmentation(data_augmentation, dataset):
     """Show grid of augmentation results
 
