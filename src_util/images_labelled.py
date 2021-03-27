@@ -116,7 +116,7 @@ if __name__ == '__main__':
                 print('failed', image_input_folder + os.sep + file)
                 continue
 
-            img = cv.resize(img, None, fx=scale, fy=scale)  # reversed indices, OK
+            img = cv.resize(img, None, fx=scale, fy=scale)
 
             # draw labels
             for category in labels[file]:  # dict of categories
@@ -138,7 +138,7 @@ if __name__ == '__main__':
             file = labels_keys[i]
 
             img = cv.imread(image_input_folder + os.sep + file)
-            img = cv.resize(img, None, fx=scale, fy=scale)  # reversed indices, OK
+            img = cv.resize(img, None, fx=scale, fy=scale)
 
             # draw labels
             for category in labels[file]:  # dict of categories

@@ -6,7 +6,6 @@ import numpy as np
 
 
 def get_class_weights(class_counts_train):
-    # todo equation
     class_counts_train = np.array(class_counts_train)
     num_classes = len(class_counts_train)
     class_counts_sum = np.sum(class_counts_train)
@@ -54,22 +53,33 @@ def get_dataset(data_dir):
     def configure_for_performance(ds):
         ds = ds.cache()
         ds = ds.shuffle(buffer_size=1024, seed=const_seed)  # reshuffle_each_iteration=True
-        ds = ds.batch(batch_size)
+        ds = ds.batch(batch_size)  # drop_remainder=True
         ds = ds.prefetch(buffer_size=autotune)
         return ds
 
-    batch_size = 128
+    batch_size = 64
 
     dataset = tf.data.Dataset.list_files(os.path.join(data_dir, '*/*.jpg'), shuffle=True)
 
-    """ Compile a `class_names` list from the tree structure of the files """
+
+    """ Get class names and counts from the tree structure of the files """
     class_dirs, class_counts = np.unique(np.array(sorted([item.parent for item in pathlib.Path(data_dir).glob('*/*')])), return_counts=True)
     class_names = [os.path.basename(directory) for directory in class_dirs]
 
     """ Load images + labels, configure """
     dataset = dataset.map(process_path, num_parallel_calls=autotune)
 
-    class_weights = get_class_weights(class_counts)  # training set only
+    # SKLearn not suitable for big tf dataset, use its equation
+    # from sklearn.utils import class_weight
+    # class_weights = class_weight.compute_class_weight('balanced',
+    #                                                   np.unique(dataset),
+    #                                                   dataset)
+
+    # recip_freq = np.sum(class_counts) / (len(le.classes_) *
+    #                        np.bincount(y_ind).astype(np.float64))
+
+    class_weights = get_class_weights(class_counts)  # unused for validation dataset
+
 
     dataset = configure_for_performance(dataset)
 

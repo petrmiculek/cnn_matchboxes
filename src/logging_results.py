@@ -17,13 +17,13 @@ def log_model_info(model, output_location=None):
     if len(model.layers) == 2:
         aug = model.layers[0]
         base_model = model.layers[1]
-        aug.summary()
+        aug.summary(line_length=120)
 
     else:
         print('log_model_info: unexpected model structure')
         base_model = model
 
-    base_model.summary()
+    base_model.summary(line_length=120)
 
     plot_model(base_model, os.path.join(output_location, base_model.name + "_architecture.png"), show_shapes=True)
 
@@ -34,12 +34,12 @@ def log_model_info(model, output_location=None):
         print('Model config already exists, did not overwrite.')
 
 
-def log_full_img_pred_losses(model_name, img_path, losses_sum, category_losses):
-    """Log full-image prediction losses (=error) to csv
+def log_mean_square_error_csv(model_name, img_path, error_sum, category_losses):
+    """Log MSE from full-image prediction to csv
 
     :param model_name:
     :param img_path:
-    :param losses_sum:
+    :param error_sum:
     :param category_losses:
     :return:
     """
@@ -53,5 +53,5 @@ def log_full_img_pred_losses(model_name, img_path, losses_sum, category_losses):
     csv_sum = 'outputs/losses_sum.csv'
     csv_cat = 'outputs/losses_categories.csv'
 
-    write_or_append_to_file(csv_sum, [model_name, img_path, losses_sum])
+    write_or_append_to_file(csv_sum, [model_name, img_path, error_sum])
     write_or_append_to_file(csv_cat, [model_name, img_path, *category_losses])

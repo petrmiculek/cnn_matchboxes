@@ -12,22 +12,23 @@ from tensorflow.keras.layers.experimental.preprocessing import \
 from src_util.general import safestr
 
 
-def augmentation(aug=True, crop_to=64, orig_size=64):
+def augmentation(aug=True, crop_to=64, ds_dim=64):
     aug_model = tf.keras.Sequential(name='augmentation')
-    aug_model.add(Input(shape=(orig_size, orig_size, 3)))
+    aug_model.add(Input(shape=(ds_dim, ds_dim, 3)))
 
     if aug:
         aug_model.add(RandomFlip("horizontal"))
-        # aug_model.add(RandomRotation(1 / 16))  # =rot22.5°
+        aug_model.add(RandomRotation(1 / 16))  # =rot22.5°
         aug_model.add(util.RandomColorDistortion(brightness_delta=0.3,
                                                  contrast_range=(0.25, 1.25),
                                                  hue_delta=0.1,
                                                  saturation_range=(0.75, 1.25)))
 
-    if crop_to != 64:
+    assert ds_dim >= crop_to
+    if ds_dim != crop_to:
         aug_model.add(CenterCrop(crop_to, crop_to))
 
-    if not aug and crop_to == 64:
+    if not aug and crop_to == ds_dim:
         # no other layers, model cannot be empty
         # base Layer class == identity layer
         aug_model.add(tf.keras.layers.Layer(name='identity'))
@@ -51,7 +52,7 @@ def dilated_64x_exp2(num_classes, name_suffix='', **kwargs):
         'padding': 'valid',
         'kernel_initializer': he_norm
     }
-    base_width = kwargs['width']  # can go 1 up
+    base_width = 16
 
     x = Input(shape=(None, None, 3))  # None, None
     input_layer = x
@@ -59,23 +60,16 @@ def dilated_64x_exp2(num_classes, name_suffix='', **kwargs):
     for i, width_coef in zip([1, 3, 5, 7, 9], [2, 4, 4, 8, 8]):
         w = base_width * width_coef
         x = Conv2D(w, 3, **conv_args, dilation_rate=i)(x)
-        if i % kwargs['pooling_freq'] == 0:
-            if kwargs['pooling'] == 'max':
-                x = MaxPool2D((2, 2), strides=(1, 1), padding='same')(x)
-            elif kwargs['pooling'] == 'avg':
-                x = MaxPool2D((2, 2), strides=(1, 1), padding='same')(x)
-            else:
-                pass
+        x = MaxPool2D((2, 2), strides=(1, 1), padding='same')(x)
         x = BatchNormalization()(x)
 
-    x = BatchNormalization()(x)
     x = Conv2D(16 * base_width, 2, **conv_args, dilation_rate=11)(x)  # -> 3x3
 
     x = BatchNormalization()(x)
     x = Conv2D(16 * base_width, 3, **conv_args)(x)  # fit-once
 
     x = BatchNormalization()(x)
-    x = Conv2D(32 * base_width, 1, **conv_args)(x)
+    x = Conv2D(16 * base_width, 1, **conv_args)(x)
 
     x = BatchNormalization()(x)
     x = Conv2D(num_classes, 1, kernel_initializer=he_norm, activation=None)(x)
@@ -135,7 +129,7 @@ def dilated_32x_exp2_wider(num_classes, name_suffix=''):
     return model, 32
 
 
-def dilated_32x_exp2(num_classes, name_suffix=''):
+def dilated_32x_exp2(num_classes, name_suffix='', **kwargs):
     """
     March 15
 
@@ -149,16 +143,18 @@ def dilated_32x_exp2(num_classes, name_suffix=''):
     conv_args = {
         'activation': 'relu',
         'padding': 'valid',
-        # 'padding': 'same',  # check
         'kernel_initializer': he_norm
     }
-    base_width = 32
+    base_width = kwargs['base_width']
 
     x = Input(shape=(None, None, 3))  # None, None
     input_layer = x
 
     # non-cropping conv
     x = Conv2D(base_width, 3, kernel_initializer=he_norm, activation='relu', padding='same')(x)
+
+    if kwargs['pool_after_first_conv']:
+        x = MaxPool2D((2, 2), strides=(1, 1), padding='same')(x)
 
     for i, width_coef in zip([3, 5, 7], [2, 4, 8]):
         x = BatchNormalization()(x)
@@ -169,10 +165,10 @@ def dilated_32x_exp2(num_classes, name_suffix=''):
         x = MaxPool2D((2, 2), strides=(1, 1), padding='same')(x)
 
     x = BatchNormalization()(x)
-    x = Conv2D(16 * base_width, 2, **conv_args)(x)  # fit-once
+    x = Conv2D(8 * base_width, 2, **conv_args)(x)  # fit-once
 
     x = BatchNormalization()(x)
-    x = Conv2D(16 * base_width, 1, **conv_args)(x)
+    x = Conv2D(8 * base_width, 1, **conv_args)(x)
 
     x = BatchNormalization()(x)
     x = Conv2D(num_classes, 1, kernel_initializer=he_norm, activation=None)(x)

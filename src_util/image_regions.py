@@ -13,7 +13,7 @@ import pandas as pd
 import scipy
 from scipy.spatial.distance import cdist
 
-from labels import load_labels
+from labels import load_labels_dict
 
 """
 Dataset prep:
@@ -125,6 +125,9 @@ if __name__ == '__main__':
     parser.add_argument('--reduced_sampling_area', '-r', action='store_true',
                         help="generate background samples closer to the image center")
 
+    parser.add_argument('--output_folder', '-o', type=str, default=None,
+                        help="output folder")
+
     # python src_util/image_regions.py -f -b -c 64 -p 100 -s 50
     # python src_util/image_regions.py -b -c 64 -r -p 100 -s 50
 
@@ -144,7 +147,11 @@ if __name__ == '__main__':
     # in/out folders
     input_folder = 'sirky' + '_val' * args.val
     run_params = f'{args.cutout_size}x_{args.scale_percentage:03d}s_{args.per_image_samples}bg'
-    output_path = 'datasets' + os.sep + run_params + '_val' * args.val
+    if args.output_folder is None:
+        output_path = 'datasets' + os.sep + run_params + '_val' * args.val
+    else:
+        output_path = args.output_folder
+
 
     labels_file = input_folder + os.sep + 'labels.csv'
     bg_csv_file = output_path + os.sep + 'background' + '.csv'
@@ -158,11 +165,14 @@ if __name__ == '__main__':
 
     if not os.path.isdir(output_path):
         os.makedirs(output_path, exist_ok=True)
+    print(f'saving to {output_path}')
 
-    labels = load_labels(labels_file, use_full_path=False)
-    # mean_label_per_category_count = np.mean([len(labels[file]) for file in labels])
-    # there are 1700 annotations in ~50 images => 35 keypoints per image
-    # can do 100 background points per image
+    labels = load_labels_dict(labels_file, use_full_path=False)
+    """
+    mean_label_per_category_count = np.mean([len(labels[file]) for file in labels])
+    there are 1700 annotations in ~50 images => 35 keypoints per image
+    can do 100 background points per image
+    """
 
     for file in labels:  # dict of labelled_files
         """
@@ -241,7 +251,7 @@ if __name__ == '__main__':
             # ]).T.astype(np.intc)
 
             min_dists = cdist(coords, file_labels_scaled).min(axis=1)
-            indices = np.where(min_dists > region_side // 2, True, False)
+            indices = np.where(min_dists > 16, True, False)
             coords = coords[indices]
 
             if len(coords) < args.per_image_samples:
