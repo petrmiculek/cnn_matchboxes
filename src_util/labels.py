@@ -4,7 +4,10 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 
+from general import lru_cache
 
+
+@lru_cache
 def load_labels_dict(path, use_full_path=True, keep_bg=True):
     """Load annotated points
 
@@ -37,6 +40,7 @@ def load_labels_dict(path, use_full_path=True, keep_bg=True):
     return labels
 
 
+@lru_cache
 def load_labels_pandas(path, use_full_path=True, keep_bg=True):
     csv = pd.read_csv(path,
                       header=None,

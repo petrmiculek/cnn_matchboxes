@@ -8,7 +8,7 @@ import sys
 import cv2 as cv
 import numpy as np
 
-from labels import load_labels
+from labels import load_labels_dict
 from random import randint
 
 """
@@ -94,7 +94,7 @@ if __name__ == '__main__':
         print('Could not find image folder', image_input_folder)
         sys.exit(1)
 
-    labels = load_labels(labels_path, use_full_path=False)
+    labels = load_labels_dict(labels_path, use_full_path=False)
 
     cat_colors = {
         'corner-top': (200, 50, 50),

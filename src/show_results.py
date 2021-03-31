@@ -5,6 +5,7 @@ import os
 import sys
 from math import ceil, floor, log10, sqrt
 from copy import deepcopy
+from functools import lru_cache
 
 import numpy as np
 import pandas as pd
@@ -19,6 +20,7 @@ from scipy.spatial.distance import cdist
 from src_util.general import safestr, timing
 from logging_results import log_mean_square_error_csv
 from src_util.labels import load_labels_dict, load_labels_pandas
+from sklearn.metrics import classification_report
 
 
 # disable profiling-related-errors
@@ -72,7 +74,6 @@ def confusion_matrix(model_name, class_names, epochs_trained, labels,
 
 
 # @pro file
-
 def misclassified_regions(imgs, labels, class_names, predictions,
                           false_pred, output_location=None, show=True):
     """Show misclassified regions
@@ -107,8 +108,8 @@ def misclassified_regions(imgs, labels, class_names, predictions,
 
 # @pro file
 # noinspection PyUnreachableCode
-def visualize_results(model, dataset, class_names, epochs_trained,
-                      output_location=None, show=False, misclassified=False, val=False):
+def evaluate_model(model, dataset, class_names, epochs_trained,
+                   output_location=None, show=False, misclassified=False, val=False):
     """Show misclassified regions and confusion matrix
 
     Get predictions for whole dataset and manually evaluate the model predictions.
@@ -125,73 +126,79 @@ def visualize_results(model, dataset, class_names, epochs_trained,
     """
 
     """Dataset processing"""
-    false_predictions, imgs, labels, predictions_argmaxes, predictions_juice = predict_all_tf(model, dataset)
+    predictions, labels, false_predictions = predict_all_tf(model, dataset)
 
     """Misclassified regions"""
-    if misclassified:
-        if output_location:
-            misclassified_dir = os.path.join(output_location, 'missclassified_regions')
-            os.makedirs(misclassified_dir, exist_ok=True)
-        else:
-            misclassified_dir = None
-
-        misclassified_regions(imgs, labels, class_names, predictions_argmaxes,
-                              false_predictions, misclassified_dir, show=False)
+    # if misclassified:
+    #     if output_location:
+    #         misclassified_dir = os.path.join(output_location, 'missclassified_regions')
+    #         os.makedirs(misclassified_dir, exist_ok=True)
+    #     else:
+    #         misclassified_dir = None
+    #
+    #     misclassified_regions(imgs, labels, class_names, predictions,
+    #                           false_predictions, misclassified_dir, show=False)
 
     """Confusion matrix"""
     confusion_matrix(model.name, class_names, epochs_trained, labels,
-                     predictions_argmaxes, output_location=output_location, show=show, val=val, normalize=False)
+                     predictions, output_location=output_location, show=show, val=val, normalize=False)
 
     """More metrics"""
-    maxes = np.max(predictions_juice, axis=1)
-    confident = len(maxes[maxes > 0.9])
-    undecided = len(maxes[maxes <= 0.125])
+    accuracy = 100.0 * (1 - len(false_predictions) / len(predictions))
 
-    accuracy = 100.0 * (1 - len(false_predictions) / len(predictions_argmaxes))
-    if val:
-        print('validation:')
+    print('Validation:' if val else 'Training:')
+    print('\tAccuracy: {0:0.3g}%'.format(accuracy))
 
-    print('Accuracy: {0:0.3g}%'.format(accuracy))
-    print('Prediction types:\n',
-          '\tConfident: {}\n'.format(confident),
-          '\tUndecided: {}'.format(undecided))
+    print(classification_report(labels, predictions))
 
     return accuracy
 
-    """
-    for i in undecided_idx:
-        fig = plt.imshow(np.squeeze(imgs[i]).astype("uint8"))
-        fig.axes.figure.show()
-    """
-    """
-    # print all predictions
-    for i, img in enumerate(predictions_juice.numpy()):
-        print('{}: '.format(i), end='')
-        print(["{0:0.2f}".format(k) for k in img])
-    """
+
+def predict_all_tf(model, dataset):
+    """Get predictions for the whole dataset, while keeping original order of labels
+
+    just using model.predict(dataset) leaves us with no info about the GT labels
 
 
-def predict_all_tf(base_model, dataset):
-    imgs = []
+    :param model:
+    :param dataset:
+    :return:
+    """
+    # using model, not base model - as I need the downscale from aug
+    # imgs = []
     labels = []
+    predictions = []
     for batch in list(dataset):
-        imgs.append(batch[0])
+        # imgs.append(batch[0])
         labels.append(batch[1])
-    imgs = tf.concat(imgs, axis=0)  # -> 4D [img_count x width x height x channels]
+        predictions.append(model(batch[0], training=False))
+
+    # imgs = tf.concat(imgs, axis=0)  # -> 4D [img_count x width x height x channels]
     labels = tf.concat(labels, axis=0)  # -> 1D [img_count]
+    predictions = tf.concat(labels, axis=0)  # -> 1D [img_count]
 
-    ds_reconstructed = tf.data.Dataset.from_tensor_slices(imgs).batch(64).prefetch(buffer_size=2)
+    # ds_reconstructed = tf.data.Dataset.from_tensor_slices(imgs).batch(64).prefetch(buffer_size=2)
+    # predictions = model.predict(ds_reconstructed)
+    # predictions_juice = tf.squeeze(predictions)
+    # predictions_maxes = tf.argmax(predictions_juice, axis=1)
 
-    predictions = base_model.predict(ds_reconstructed)
-    predictions_juice = tf.squeeze(predictions)
-    predictions_maxes = tf.argmax(predictions_juice, axis=1)
-    false_predictions = tf.squeeze(tf.where(labels != predictions_maxes))
+    false_predictions = tf.squeeze(tf.where(labels != predictions))
 
-    return false_predictions, imgs, labels, predictions_maxes, predictions_juice
+    return predictions, labels, false_predictions  # imgs 2nd
 
 
-def predict_all_numpy(base_model, dataset):
-    # superseded by predict_all_tf
+def predict_all_numpy(model, dataset):
+    """Get predictions for the whole dataset, while keeping original order of labels
+
+    just using model.predict(dataset) leaves us with no info about the GT labels
+
+    superseded by predict_all_tf
+
+    :param model:
+    :param dataset:
+    :return:
+    """
+
     imgs = []
     labels = []
     for batch in list(dataset):
@@ -200,43 +207,17 @@ def predict_all_numpy(base_model, dataset):
 
     imgs = np.vstack(imgs)  # -> 4D [img_count x width x height x channels]
     labels = np.hstack(labels)  # -> 1D [img_count]
+
     """Making predictions"""
     imgs_tensor = tf.convert_to_tensor(imgs, dtype=tf.uint8)
-    ds_reconstructed = tf.data.Dataset.from_tensor_slices(imgs_tensor).batch(32).prefetch(
-        buffer_size=tf.data.experimental.AUTOTUNE)
-    predictions_raw = timing(base_model.predict)(ds_reconstructed)
-    predictions_juice = tf.squeeze(predictions_raw)
-    predictions = tf.argmax(predictions_juice, axis=1)
+    ds_reconstructed = tf.data.Dataset.from_tensor_slices(imgs_tensor)\
+        .batch(32).prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+
+    predictions = model.predict(ds_reconstructed)
+    predictions = tf.argmax(tf.squeeze(predictions), axis=1)
     false_predictions = np.where(labels != predictions)[0]  # reduce dimensions of a nested array
 
-    return false_predictions, imgs, labels, predictions, predictions_juice
-
-
-def heatmaps_all(base_model, class_names, val=True,
-                 undecided_only=False, maxes_only=False,
-                 output_location=None, show=True, epochs_trained=0):
-    labels_dir = 'sirky' + '_val' * val
-    # labels = load_labels_dict(labels_dir + os.sep + 'labels.csv', use_full_path=False, keep_bg=False)
-    labels = load_labels_pandas(labels_dir + os.sep + 'labels.csv', use_full_path=False, keep_bg=False)
-
-    if output_location:
-        output_location = os.path.join(output_location, 'heatmaps')
-        os.makedirs(output_location, exist_ok=True)
-
-    errs = []
-    for file in pd.unique(labels['image']):
-        file_labels = labels[labels.image == file]
-        err = predict_full_image(base_model, class_names,
-                                 file_labels,
-                                 img_path=labels_dir + os.sep + file,
-                                 output_location=output_location,
-                                 show=show,
-                                 undecided_only=undecided_only,
-                                 maxes_only=maxes_only)
-        errs.append(err)
-
-    avg_mean_absolute_error = np.mean(np.array(errs))
-    tf.summary.scalar('avg_mae' + '_val' * val, avg_mean_absolute_error, step=epochs_trained)
+    return predictions, imgs, labels, false_predictions
 
 
 def get_image_as_batch(img_path, scale=1.0, center_crop_fraction=1.0):
@@ -302,77 +283,6 @@ def make_prediction(base_model, img, maxes_only=False, undecided_only=False):
     return predictions
 
 
-def full_img_mse_error(predictions, img_path, file_labels, class_names, base_model):
-    """Calculate MSE metric for full-image prediction
-
-    todo calculate MSE from prediction probability instead of argmax?
-
-    for all prediction-pixels:
-        non-background: distance to closest keypoint of given class ^ 2
-                        if no GT keypoint of given category present, fixed penalty
-
-        background: 0.0, if distance to nearest keypoint > min_dist_background
-                    else fixed penalty
-
-    """
-    min_dist_background = 2.0
-    min_dist_background_penalty = 1e3
-    no_such_cat_penalty = 1e6
-
-    file_labels_merged = np.array([file_labels.x, file_labels.y]).T
-
-    # make prediction one-hot over channels
-    p_argmax = np.argmax(predictions, axis=2)
-
-    # grid for calculating distances
-
-    grid = np.meshgrid(np.arange(predictions.shape[1]), np.arange(predictions.shape[0]))
-    grid = np.vstack([grid])
-    grid = np.transpose(grid, (1, 2, 0))
-
-    category_losses = {}
-
-    """ background """
-    bg_mask = np.where(p_argmax == 0, True, False)  # 2D mask
-    bg_list = grid[bg_mask]  # list of 2D coords
-    uniq = np.unique(bg_list, axis=0)
-    if len(uniq) != len(bg_list):
-        print(f'uniq {len(uniq)} / {len(bg_list)}')
-
-    per_pixel_distances = cdist(bg_list, file_labels_merged)
-    per_pixel_loss = np.min(per_pixel_distances, axis=1)
-    penalized = per_pixel_loss[per_pixel_loss < min_dist_background]
-    category_losses['background'] = min_dist_background_penalty * len(penalized)
-
-    """ keypoint categories """
-    for i, cat in enumerate(class_names[1:], start=1):  # skip 0 == background
-        # filter predictions of given category
-        cat_list = grid[p_argmax == i]
-        # cat_mask = np.where(p_argmax == i, True, False)  # 2D mask
-
-        if cat not in file_labels.category.values:  # no GT labels of this category
-            # predicted non-present category
-            category_losses[cat] = len(cat_list) * no_such_cat_penalty
-            continue
-
-        # distance of each predicted point to each GT label
-        cat_labels = file_labels[file_labels.category == cat]
-        cat_labels = np.array([cat_labels.x, cat_labels.y]).T
-        per_pixel_distances = np.square(cdist(cat_list, cat_labels))
-        per_pixel_loss = np.min(per_pixel_distances, axis=1)
-
-        category_losses[cat] = np.sum(per_pixel_loss)
-
-    loss_values_only = list(category_losses.values())
-    loss_sum = np.sum(loss_values_only)
-
-    # log to csv
-    log_mean_square_error_csv(base_model.name, img_path, loss_sum, loss_values_only)
-
-    return loss_sum, \
-           [str(cat) + ': 1e{0:0.2g}'.format(log10(loss + 1)) for cat, loss in category_losses.items()]
-
-
 def crop_to_prediction(img, pred):
     model_crop_delta = img.shape[0] - pred.shape[0]
     low = floor(model_crop_delta / 2)
@@ -381,9 +291,32 @@ def crop_to_prediction(img, pred):
     return img[low:-high, low:-high], model_crop_delta
 
 
-def rescale_file_labels(dict_labels, orig_img_size, scale, model_crop_delta, center_crop_fraction):
-    # todo test function: show annotations on a scaled-down image
+# @pro file
+def postprocess_predictions(img, predictions, superimpose=False):
+    predictions = np.uint8(255 * predictions)
+    # img = cv.cvtColor(img, cv.COLOR_RGB2BGR)
+    class_activations = []
+    heatmap_alpha = 0.7
+    for i in range(8):
+        pred = cv.cvtColor(predictions[:, :, i], cv.COLOR_GRAY2BGR)
+        pred = cv.applyColorMap(pred, cv.COLORMAP_VIRIDIS)
+        pred = cv.cvtColor(pred, cv.COLOR_BGR2RGB)
+        if superimpose:
+            pred = cv.addWeighted(pred, heatmap_alpha, img, 1 - heatmap_alpha, gamma=0)
+        class_activations.append(pred)
+    class_activations.append(img)
+    return class_activations
 
+
+@lru_cache
+def grid_like(x, y):
+    grid = np.meshgrid(np.arange(x), np.arange(y))
+    grid = np.vstack([grid])
+    grid = np.transpose(grid, (1, 2, 0))
+    return grid
+
+
+def rescale_file_labels_dict(dict_labels, orig_img_size, scale, model_crop_delta, center_crop_fraction):
     new = dict()
     for cat, labels in dict_labels.items():
         new_l = []
@@ -424,6 +357,71 @@ def rescale_file_labels_pandas(file_labels, orig_img_size, scale, model_crop_del
     return file_labels
 
 
+def full_img_mse_error(predictions, img_path, file_labels, class_names, base_model):
+    """Calculate MSE metric for full-image prediction
+
+    todo calculate MSE from prediction probability instead of argmax?
+
+    for all prediction-pixels:
+        non-background: distance to closest keypoint of given class ^ 2
+                        if no GT keypoint of given category present, fixed penalty
+
+        background: 0.0, if distance to nearest keypoint > min_dist_background
+                    else fixed penalty
+
+    """
+    min_dist_background = 2.0
+    min_dist_background_penalty = 1e3
+    no_such_cat_penalty = 1e6
+
+    file_labels_merged = np.array([file_labels.x, file_labels.y]).T
+
+    # make prediction one-hot over channels
+    p_argmax = np.argmax(predictions, axis=2)
+
+    # grid for calculating distances
+    grid = grid_like(predictions.shape[1], predictions.shape[0])
+
+    category_losses = {}
+
+    """ background """
+    bg_mask = np.where(p_argmax == 0, True, False)  # 2D mask
+    bg_list = grid[bg_mask]  # list of 2D coords
+
+    per_pixel_distances = cdist(bg_list, file_labels_merged)
+    per_pixel_loss = np.min(per_pixel_distances, axis=1)
+    penalized = per_pixel_loss[per_pixel_loss < min_dist_background]
+    category_losses['background'] = min_dist_background_penalty * len(penalized)
+
+    """ keypoint categories """
+    for i, cat in enumerate(class_names[1:], start=1):  # skip 0 == background
+        # filter predictions of given category
+        cat_list = grid[p_argmax == i]
+        # cat_mask = np.where(p_argmax == i, True, False)  # 2D mask
+
+        if cat not in file_labels.category.values:  # no GT labels of this category
+            # predicted non-present category
+            category_losses[cat] = len(cat_list) * no_such_cat_penalty
+            continue
+
+        # distance of each predicted point to each GT label
+        cat_labels = file_labels[file_labels.category == cat]
+        cat_labels = np.array([cat_labels.x, cat_labels.y]).T
+        per_pixel_distances = np.square(cdist(cat_list, cat_labels))
+        per_pixel_loss = np.min(per_pixel_distances, axis=1)
+
+        category_losses[cat] = np.sum(per_pixel_loss)
+
+    loss_values_only = list(category_losses.values())
+    loss_sum = np.sum(loss_values_only)
+
+    # log to csv
+    log_mean_square_error_csv(base_model.name, img_path, loss_sum, loss_values_only)
+
+    return loss_sum, \
+           [str(cat) + ': 1e{0:0.2g}'.format(log10(loss + 1)) for cat, loss in category_losses.items()]
+
+
 # @pro file
 def predict_full_image(base_model, class_names, file_labels, img_path, output_location=None,
                        show=True, maxes_only=False, undecided_only=False):
@@ -459,7 +457,8 @@ def predict_full_image(base_model, class_names, file_labels, img_path, output_lo
         plots_title = 'maxes'
     else:
         try:
-            file_labels = rescale_file_labels_pandas(file_labels, orig_size, scale, model_crop_delta, center_crop_fraction)
+            file_labels = rescale_file_labels_pandas(file_labels, orig_size, scale, model_crop_delta,
+                                                     center_crop_fraction)
 
             losses_sum, category_losses = full_img_mse_error(predictions, img_path, file_labels, class_names,
                                                              base_model)
@@ -479,11 +478,40 @@ def predict_full_image(base_model, class_names, file_labels, img_path, output_lo
     return losses_sum
 
 
-# @pro file
+def heatmaps_all(base_model, class_names, val=True,
+                 undecided_only=False, maxes_only=False,
+                 output_location=None, show=True, epochs_trained=0):
+    labels_dir = 'sirky' + '_val' * val
+    # labels = load_labels_dict(labels_dir + os.sep + 'labels.csv', use_full_path=False, keep_bg=False)
+    labels = load_labels_pandas(labels_dir + os.sep + 'labels.csv', use_full_path=False, keep_bg=False)
 
+    if output_location:
+        output_location = os.path.join(output_location, 'heatmaps')
+        os.makedirs(output_location, exist_ok=True)
+
+    errs = []
+    for file in pd.unique(labels['image']):
+        file_labels = labels[labels.image == file]
+        err = predict_full_image(base_model, class_names,
+                                 file_labels,
+                                 img_path=labels_dir + os.sep + file,
+                                 output_location=output_location,
+                                 show=show,
+                                 undecided_only=undecided_only,
+                                 maxes_only=maxes_only)
+        errs.append(err)
+
+    avg_mean_square_error = np.mean(np.array(errs))
+    print(f'avg_mse{"_val" if val else ""}: 1e{log10(avg_mean_square_error + 1):0.2g}')
+    tf.summary.scalar('avg_mse' + '_val' * val, avg_mean_square_error, step=epochs_trained)
+
+
+# @pro file
 def display_predictions(predictions, img, img_path, class_names, title='', show=True,
                         output_location=None, superimpose=False):
     # Plot predictions as heatmaps superimposed on input image
+    if not show and output_location is None:
+        return
 
     class_activations = postprocess_predictions(img, predictions, superimpose)
 
@@ -519,25 +547,6 @@ def name_image_saving(img_path, output_location):
 
 
 # @pro file
-
-def postprocess_predictions(img, predictions, superimpose=False):
-    predictions = np.uint8(255 * predictions)
-    # img = cv.cvtColor(img, cv.COLOR_RGB2BGR)
-    class_activations = []
-    heatmap_alpha = 0.7
-    for i in range(8):
-        pred = cv.cvtColor(predictions[:, :, i], cv.COLOR_GRAY2BGR)
-        pred = cv.applyColorMap(pred, cv.COLORMAP_VIRIDIS)
-        pred = cv.cvtColor(pred, cv.COLOR_BGR2RGB)
-        if superimpose:
-            pred = cv.addWeighted(pred, heatmap_alpha, img, 1 - heatmap_alpha, gamma=0)
-        class_activations.append(pred)
-    class_activations.append(img)
-    return class_activations
-
-
-# @pro file
-
 def gallery(array, ncols=3):
     """
     https://stackoverflow.com/questions/42040747/more-idiomatic-way-to-display-images-in-a-grid-with-numpy
@@ -557,7 +566,6 @@ def gallery(array, ncols=3):
 
 
 # @pro file
-
 def save_predictions_cv(predictions, img, img_path, output_location):
     class_activations = postprocess_predictions(img, predictions, superimpose=False)
 
@@ -598,7 +606,6 @@ def tile(arr, nrows, ncols):
 
 
 # @pro file
-
 def show_layer_activations(model, data_augmentation, ds, class_names, show=True, output_location=None):
     """Predict single cutout and show network's layer activations
 
@@ -705,7 +712,6 @@ def show_layer_activations(model, data_augmentation, ds, class_names, show=True,
 
 
 # @pro file
-
 def show_mse_location(predictions, img, img_path, file_labels, class_names, output_location=None, show=True):
     """Show contributions to MSE in full image predictions
 
@@ -724,6 +730,8 @@ def show_mse_location(predictions, img, img_path, file_labels, class_names, outp
     idea: grid distance to keypoint could be cached and loaded from a pickle
 
     """
+    if not show and output_location is None:
+        return
 
     def dst_pt2grid(pt):
         return np.square(np.hypot(gx - pt[0], gy - pt[1]))
@@ -771,7 +779,6 @@ def show_mse_location(predictions, img, img_path, file_labels, class_names, outp
 
 
 # @pro file
-
 def show_augmentation(data_augmentation, dataset):
     """Show grid of augmentation results
 

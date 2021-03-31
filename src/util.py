@@ -3,7 +3,9 @@ import glob
 import shutil
 import tensorflow as tf
 import tensorflow_addons as tfa
+import tensorflow.keras.backend as K
 
+from show_results import heatmaps_all
 """
 Model-related utility code
 (as opposed to non-model-related utility code in src_util)
@@ -82,11 +84,6 @@ class F1(tfa.metrics.F1Score):
         return super(F1, self).update_state(y_true, y_pred_reshaped, sample_weight)
 
 
-if 0:
-    y_true = tf.convert_to_tensor([[1, 0, 0, 1, 0]])
-    y_pred = tf.convert_to_tensor([[1, 0, 0, 1, 1]])
-
-
 # https://datascience.stackexchange.com/questions/48246/how-to-compute-f1-in-tensorflow
 def f1_metric(y_true, y_pred):
     true_positives = tf.cast(K.sum(K.round(K.clip(y_true * y_pred, 0, 1))), dtype=tf.float32)
@@ -114,6 +111,35 @@ class AUC(tf.keras.metrics.AUC):
 #         y_pred_binary = tf.where(tf.argmax(y_pred_reshaped, axis=1) > 0, 1, 0)
 #
 #         return super(mAP, self).update_state(y_true, y_pred_binary, sample_weight)
+
+
+class MSELogger(tf.keras.callbacks.Callback):
+    def __init__(self, class_names, freq=1):
+        super().__init__()
+        self._supports_tf_logs = True
+        self.class_names = class_names
+        self.freq = freq
+
+    def on_epoch_end(self, epoch, logs=None):
+        if epoch > 0 and epoch % self.freq == 0:
+            base_model = self.model.layers[1]
+            # validation data
+            heatmaps_all(base_model, self.class_names, val=True,
+                         output_location=None, show=False, epochs_trained=epoch)
+            # training data
+            heatmaps_all(base_model, self.class_names, val=False,
+                         output_location=None, show=False, epochs_trained=epoch)
+
+
+class LearningRateLogger(tf.keras.callbacks.Callback):
+    def __init__(self):
+        super().__init__()
+        self._supports_tf_logs = True
+
+    def on_epoch_end(self, epoch, logs=None):
+        if logs is None or "learning_rate" in logs:
+            return
+        logs["learning_rate"] = self.model.optimizer.lr
 
 
 def lr_scheduler(epoch, lr, start=10, end=150, decay=-0.10):

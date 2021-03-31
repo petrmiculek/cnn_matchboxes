@@ -13,10 +13,8 @@ https://colab.research.google.com/drive/1F28FEGGLmy8-jW9IaOo60InR9VQtPbmG
 # stdlib
 import os
 import sys
-
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import datetime
-from itertools import product
 from contextlib import redirect_stdout
 
 # external libs
@@ -40,8 +38,7 @@ import models
 import model_ops
 import util
 from datasets import get_dataset
-from show_results import visualize_results, predict_full_image, show_layer_activations, heatmaps_all
-# from src_util.labels import load_labels_dict
+from show_results import evaluate_model, show_layer_activations, heatmaps_all
 from src_util.general import safestr, DuplicateStream
 from logging_results import log_model_info
 from mining import mine_hard_cases
@@ -53,12 +50,12 @@ from src_util.general import timing
 #     return x
 
 # @pro file
-def run(model_builder, model_kwargs={}, use_small_ds=True, augment=False, train=True, ds_dim=64):
+def run(model_builder, model_kwargs={}, dataset_size=200, augment=False, train=True, ds_dim=64):
     """
     # execute if running in Py console
     model_builder = models.dilated_64x_exp2
     model_kwargs={'pool': 'max'}
-    use_small_ds=False
+    dataset_size=1000
     augment=False
     train = True
     show = True
@@ -72,14 +69,8 @@ def run(model_builder, model_kwargs={}, use_small_ds=True, augment=False, train=
         scale = 0.5
         use_weights = model_kwargs['use_weights'] if 'use_weights' in model_kwargs else False
 
-        # per image background samples
-        if use_small_ds:
-            bg_samples = 100
-        else:
-            bg_samples = 500
-
-        data_dir = f'/data/datasets/{ds_dim}x_{int(100 * scale):03d}s_{bg_samples}bg'
-        # data_dir = f'datasets/{ds_dim}x_{int(100 * scale):03d}s_{bg_samples}bg'
+        data_dir = f'/data/datasets/{ds_dim}x_{int(100 * scale):03d}s_{dataset_size}bg'
+        # data_dir = f'datasets/{ds_dim}x_{int(100 * scale):03d}s_{dataset_size}bg'
         checkpoint_path = util.get_checkpoint_path()
 
         time = safestr(datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
@@ -93,22 +84,23 @@ def run(model_builder, model_kwargs={}, use_small_ds=True, augment=False, train=
         if train:
             base_model, model, data_augmentation, callbacks = model_ops.build_new_model(model_builder,
                                                                                         model_kwargs,
-                                                                                        num_classes,
+                                                                                        class_names,
                                                                                         augment=augment,
                                                                                         name_suffix=time,
                                                                                         ds_dim=ds_dim,
                                                                                         checkpoint_path=checkpoint_path,
-                                                                                        bg_samples=bg_samples,
+                                                                                        dataset_size=dataset_size,
                                                                                         )
 
         else:
-            # load_model_name = 'dilated_64x_exp2_2021-03-19-02-11-52_full'  # trained on 500bg
             # load_model_name = 'dilated_64x_exp2_2021-03-26-04-57-57_full'  # /data/datasets/64x_050s_500bg
-            load_model_name = 'dilated_64x_exp2_2021-03-27-06-36-50_full'  # /data/datasets/128x_050s_500bg
+            # load_model_name = 'dilated_64x_exp2_2021-03-27-06-36-50_full'  # /data/datasets/128x_050s_500bg
+            load_model_name = 'dilated_32x_exp22021-03-28-16-38-11_full'  # /data/datasets/64x_050s_500bg
+            load_model_name = 'dilated_64x_exp2_2021-03-29-15-58-47_full'  # /data/datasets/128x_050s_1000bg
             config = os.path.join('outputs', load_model_name, 'model_config.json')
             weights = os.path.join('models_saved', load_model_name)
 
-            base_model, model, data_augmentation, callbacks = model_ops.load_model(config, weights)
+            base_model, model, data_augmentation, callbacks = model_ops.load_model(config, class_names, weights)
 
         """ Model outputs dir """
 
@@ -124,14 +116,16 @@ def run(model_builder, model_kwargs={}, use_small_ds=True, augment=False, train=
         print(model_kwargs)
 
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
+        tf.get_logger().setLevel('ERROR')  # suppress warnings about early-stopping and model-checkpoints
         epochs_trained = 0
 
         if train:
-            epochs = 100
+            epochs = 50
             if hard_mining:
+
                 epochs_to_reshuffle = 10
                 curr_ds = train_ds
-                while epochs_trained < epochs_total:
+                while epochs_trained < epochs:
                     """ Train the model"""
                     model.fit(
                         curr_ds,
@@ -152,16 +146,19 @@ def run(model_builder, model_kwargs={}, use_small_ds=True, augment=False, train=
 
                     epochs_trained += epochs
             else:
-                model.fit(
-                    train_ds,
-                    validation_data=val_ds,
-                    validation_freq=5,
-                    epochs=(epochs + epochs_trained),
-                    initial_epoch=epochs_trained,
-                    callbacks=callbacks,
-                    # class_weight=class_weights,  # WITHOUT
-                    verbose=2  # one line per epoch
-                )
+                try:
+                    model.fit(
+                        train_ds,
+                        validation_data=val_ds,
+                        validation_freq=5,
+                        epochs=(epochs + epochs_trained),
+                        initial_epoch=epochs_trained,
+                        callbacks=callbacks,
+                        # class_weight=class_weights,  # WITHOUT
+                        verbose=2  # one line per epoch
+                    )
+                except KeyboardInterrupt:
+                    print('Training stopped preemptively')
                 epochs_trained += epochs
             try:
                 if epochs_trained > 5:
@@ -177,9 +174,9 @@ def run(model_builder, model_kwargs={}, use_small_ds=True, augment=False, train=
 
         # show = True
         # output_location = None  # do-not-save flag
-        val_accu = visualize_results(model, val_ds, class_names, epochs_trained, output_location=output_location,
-                                     show=show, misclassified=True, val=True)
-        visualize_results(model, train_ds, class_names, epochs_trained, output_location=output_location, show=show)
+        val_accu = evaluate_model(model, val_ds, class_names, epochs_trained, output_location=output_location,
+                                  show=show, misclassified=True, val=True)
+        # visualize_results(model, train_ds, class_names, epochs_trained, output_location=output_location, show=show)
 
         if val_accu < 90.0:  # %
             print('Val accu too low:', val_accu, 'skipping heatmaps')
@@ -220,7 +217,11 @@ def tf_init():
 
 if __name__ == '__main__':
     tf_init()
-
-    run(models.dilated_64x_exp2, use_small_ds=True, train=True, model_kwargs={'pool': 'max'})
-    # run(models.dilated_64x_exp2, use_small_ds=False, train=False)
+    model_kwargs = {'pool': 'max',
+                    'use_weights': False,
+                    'pool_after_first_conv': True,
+                    'base_width': 8,
+                    }
+    # run(models.dilated_64x_exp2, dataset_size=200, train=True, model_kwargs={'pool': 'max'})
+    run(models.dilated_64x_exp2, model_kwargs=model_kwargs, dataset_size=1000, train=True, ds_dim=128, )
     pass

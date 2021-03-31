@@ -1,4 +1,5 @@
 import tensorflow as tf
+from show_results import predict_all_tf
 
 
 def mine_hard_cases(base_model, dataset):
@@ -11,14 +12,15 @@ def mine_hard_cases(base_model, dataset):
     :return:
     """
 
-    false_preds, imgs, labels, *_ = predict_all_tf(base_model, dataset)
+    predictions, imgs, labels, false_predictions = predict_all_tf(base_model, dataset)
 
-    hard_ds = tf.data.Dataset.from_tensor_slices((tf.gather_nd(imgs, false_preds),
-                                                  tf.gather_nd(labels, false_preds)))
+    hard_ds = tf.data.Dataset.from_tensor_slices((tf.gather_nd(imgs, false_predictions),
+                                                  tf.gather_nd(labels, false_predictions)))
     return hard_ds
 
 
 def between_keypoints():
+    # todo finish this sandbox
     import numpy as np
     import pandas as pd
     from labels import load_labels_pandas

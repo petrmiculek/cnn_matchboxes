@@ -1,10 +1,35 @@
-from functools import wraps
+from functools import wraps, lru_cache as lru_cache_orig
+from copy import deepcopy
 from time import time
+
+
+def lru_cache(maxsize=128, typed=False, copy=False):
+    """Copying LRU cache - memoize results, return mutable copies
+
+    Taken from:
+    https://stackoverflow.com/questions/54909357/how-to-get-functools-lru-cache-to-return-new-instances
+    :param maxsize:
+    :param typed:
+    :param copy:
+    :return:
+    """
+    if not copy:
+        return lru_cache_orig(maxsize, typed)
+
+    def decorator(f):
+        cached_func = lru_cache_orig(maxsize, typed)(f)
+
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            return deepcopy(cached_func(*args, **kwargs))
+
+        return wrapper
+
+    return decorator
 
 
 def timing(f):
     """Time a function execution - as a decorator or timing(foo)(args)
-
 
     Taken from
     https://stackoverflow.com/questions/1622943/timeit-versus-timing-decorator
@@ -12,12 +37,13 @@ def timing(f):
     :param f:
     :return:
     """
+
     @wraps(f)
-    def wrap(*args, **kw):
-        ts = time()
-        result = f(*args, **kw)
-        te = time()
-        print(f'func:{f.__name__!r} args:[{args!r}, {kw!r}] took: {te - ts:2.4f} sec')
+    def wrap(*args, **kwargs):
+        start = time()
+        result = f(*args, **kwargs)
+        end = time()
+        print(f'func:{f.__name__!r} args:[{args!r}, {kwargs!r}] took: {end - start:2.4f} sec')
         return result
 
     return wrap
