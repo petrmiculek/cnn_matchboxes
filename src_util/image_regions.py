@@ -20,14 +20,13 @@ padding x radius for background
 """
 
 """
-Example usage:
+Example standalone usage:
 ## 64x
 # bg100
 python src_util/image_regions.py -f -b -c 64 -p 100 -s 50
 python src_util/image_regions.py -b -c 64 -r -p 100 -s 50
 python src_util/image_regions.py -f -b -c 64 -p 100 -s 50 -v
 python src_util/image_regions.py -b -c 64 -r -p 100 -s 50 -v
-
 
 # bg500
 python src_util/image_regions.py -f -b -c 64 -p 500 -s 50
