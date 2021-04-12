@@ -1,7 +1,9 @@
+# stdlib
 import csv
 import json
 import os
-from os.path import isfile
+
+# external
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.utils import plot_model
@@ -44,7 +46,7 @@ def log_mean_square_error_csv(model_name, img_path, error_sum, category_losses):
     :return:
     """
     def write_or_append_to_file(path, content):
-        mode = 'a' if isfile(csv_sum) else 'w'
+        mode = 'a' if os.path.isfile(csv_sum) else 'w'
 
         with open(path, mode) as csv_file:
             csv_writer = csv.writer(csv_file)  # , delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL

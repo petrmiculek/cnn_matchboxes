@@ -22,17 +22,19 @@ def get_class_weights(class_counts_train):
 #     return x
 
 
-# @pro file
-def get_dataset(data_dir):
+def get_dataset(dataset_dir, batch_size=64, use_weights=False):
     """
     Get dataset, class names and class weights
 
     Inspired by https://www.tensorflow.org/tutorials/load_data/images
 
-    :param data_dir:
+    :param use_weights:
+    :param dataset_dir:
+    :param batch_size:
     :return:
     """
-    const_seed = 1234
+    assert os.path.isdir(dataset_dir)
+
     autotune = tf.data.experimental.AUTOTUNE
 
     def get_label(file_path):
@@ -40,7 +42,7 @@ def get_dataset(data_dir):
         parts = tf.strings.split(file_path, os.path.sep)
 
         # The second to last is the class-directory
-        # (purpose = class-number-independent encoding)
+        # purpose = class-number-independent encoding
 
         one_hot = parts[-2] == class_names
         # Integer encode the label
@@ -57,31 +59,26 @@ def get_dataset(data_dir):
 
     def configure_for_performance(ds):
         ds = ds.cache()
-        ds = ds.shuffle(buffer_size=1024, seed=const_seed)  # reshuffle_each_iteration=True
+        ds = ds.shuffle(buffer_size=1024)  # reshuffle_each_iteration=True
         ds = ds.batch(batch_size)  # drop_remainder=True
         ds = ds.prefetch(buffer_size=autotune)
         return ds
 
-    batch_size = 64
-
-    dataset = tf.data.Dataset.list_files(os.path.join(data_dir, '*/*.jpg'), shuffle=True)
+    dataset = tf.data.Dataset.list_files(os.path.join(dataset_dir, '*/*.jpg'), shuffle=True)
 
     """ Get class names and counts from the tree structure of the files """
-    class_dirs, class_counts = np.unique(np.array(sorted([item.parent for item in pathlib.Path(data_dir).glob('*/*')])), return_counts=True)
+    class_dirs, class_counts = np.unique(np.array(sorted(
+        [item.parent for item in pathlib.Path(dataset_dir).glob('*/*')])), return_counts=True)
+
     class_names = [os.path.basename(directory) for directory in class_dirs]
 
     """ Load images + labels, configure """
     dataset = dataset.map(process_path, num_parallel_calls=autotune)
 
-    # from sklearn.utils import class_weight
-    # fake_ds = [np.repeat(0, i) for i in class_counts]
-    # fake_ds = np.hstack(fake_ds)
-    # class_weights_sklearn = class_weight.compute_class_weight('balanced',
-    #                                                    classes=np.unique(fake_ds),
-    #                                                    y=fake_ds)
-
-    class_weights = get_class_weights(class_counts)  # unused for validation dataset
-
+    if use_weights:
+        class_weights = get_class_weights(class_counts)  # unused for validation dataset
+    else:
+        class_weights = dict(zip(range(0, len(class_names)), np.ones(len(class_names))))
 
     dataset = configure_for_performance(dataset)
 

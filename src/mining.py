@@ -1,5 +1,5 @@
 import tensorflow as tf
-from show_results import predict_all_tf
+from eval_samples import predict_all_tf
 
 
 def mine_hard_cases(base_model, dataset):

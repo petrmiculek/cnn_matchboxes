@@ -1,11 +1,14 @@
 import os
 import glob
 import shutil
+from math import log10
+
 import tensorflow as tf
 import tensorflow_addons as tfa
 import tensorflow.keras.backend as K
 
-from show_results import heatmaps_all
+from eval_images import full_prediction_all
+
 """
 Model-related utility code
 (as opposed to non-model-related utility code in src_util)
@@ -23,7 +26,6 @@ def get_checkpoint_path(path='/tmp/model_checkpoints'):
     return os.path.join(path, 'checkpoint')
 
 
-# @tf.fun ction
 def pred_reshape(y_pred):
     return tf.reshape(y_pred, [tf.shape(y_pred)[0], tf.shape(y_pred)[3]])
 
@@ -42,8 +44,8 @@ class Accu(tf.metrics.SparseCategoricalAccuracy):
 
         # make prediction fail if it is undecided (all probabilities are 1/num_classes = 0.125)
         cond = tf.expand_dims(tf.math.equal(tf.math.reduce_max(y_pred_reshaped, axis=1), 0.125), axis=1)
-        # tf.cast(7, dtype=tf.int64)  # local tf 2.2 likes it float32, colab asks for int64 :shrug:
-        y_avoid_free = tf.where(cond, 7.0, y_true)
+
+        y_avoid_free = tf.where(cond, tf.cast(7, dtype=tf.int64), y_true)
 
         return super(Accu, self).update_state(y_avoid_free, y_pred_reshaped, sample_weight)
 
@@ -85,6 +87,7 @@ class F1(tfa.metrics.F1Score):
 
 
 # https://datascience.stackexchange.com/questions/48246/how-to-compute-f1-in-tensorflow
+# unused
 def f1_metric(y_true, y_pred):
     true_positives = tf.cast(K.sum(K.round(K.clip(y_true * y_pred, 0, 1))), dtype=tf.float32)
     possible_positives = tf.cast(K.sum(K.round(K.clip(y_true, 0, 1))), dtype=tf.float32)
@@ -114,21 +117,25 @@ class AUC(tf.keras.metrics.AUC):
 
 
 class MSELogger(tf.keras.callbacks.Callback):
-    def __init__(self, class_names, freq=1):
+    def __init__(self, freq=1):
         super().__init__()
         self._supports_tf_logs = True
-        self.class_names = class_names
         self.freq = freq
 
     def on_epoch_end(self, epoch, logs=None):
         if epoch > 0 and epoch % self.freq == 0:
             base_model = self.model.layers[1]
+
             # validation data
-            heatmaps_all(base_model, self.class_names, val=True,
-                         output_location=None, show=False, epochs_trained=epoch)
+            mse_val = full_prediction_all(base_model, val=True, output_location=None, show=False)
+
+            print(f'avg_mse_val: 1e{log10(mse_val + 1):0.2g}')
+            tf.summary.scalar('avg_mse_val', mse_val, step=epoch)
+
             # training data
-            heatmaps_all(base_model, self.class_names, val=False,
-                         output_location=None, show=False, epochs_trained=epoch)
+            mse_train = full_prediction_all(base_model, val=False, output_location=None, show=False)
+            print(f'avg_mse_train: 1e{log10(mse_train + 1):0.2g}')
+            tf.summary.scalar('avg_mse', mse_train, step=epoch)
 
 
 class LearningRateLogger(tf.keras.callbacks.Callback):
@@ -183,7 +190,6 @@ class RandomColorDistortion(tf.keras.layers.Layer):
         self.hue = hue_delta
         self.saturation_range = saturation_range
 
-    @tf.function
     def call(self, images, training=None):
         if training is None:
             training = tf.keras.backend.learning_phase()
@@ -206,3 +212,19 @@ class RandomColorDistortion(tf.keras.layers.Layer):
         }
 
     # from_config() needs not to be reimplemented
+
+
+def conv_dim_calc(w, k, d=1, p=0, s=1):
+    """Calculate change of dimension size caused by a convolution layer
+
+    out = (w - f + 2p) / s + 1
+    f = 1 + (k - 1) * d
+
+    :param w: width
+    :param k: kernel size
+    :param d: dilation rate
+    :param p: padding
+    :param s: stride
+    :return: output size
+    """
+    return (w - (1 + (k - 1) * d) + 2 * p) // s + 1

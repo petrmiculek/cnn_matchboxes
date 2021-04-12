@@ -126,6 +126,10 @@ def get_cat_points(file_labels, cat=None, cv=False):
             lines = file_labels[file_labels.category == cat]
         else:  # assume list
             lines = file_labels[file_labels.category.isin(cat)]
+
+    if len(lines) == 0:
+        return np.array([])
+
     if cv:
         # openCV order
         return np.array([lines.y, lines.x]).T
@@ -140,13 +144,13 @@ def inverse_index(arr, index):
     return arr[mask]  # copy?
 
 
-def connect_points(canvas, pts1, pts2):
+def connect_points(canvas, pts1, pts2, c=200):
     if len(pts1) != len(pts2):
         print('warning, len mismatch 1: {} x 2: {}'.format(len(pts1), len(pts2)))
 
     for i in range(len(pts1)):
         d = skimage.draw.line(*pts1[i], *pts2[i])
-        canvas[d] = 200
+        canvas[d] = c
 
 
 def axis_direction(pts_from, pts_to):
@@ -155,22 +159,56 @@ def axis_direction(pts_from, pts_to):
     return direction / (np.sqrt(np.sum(direction ** 2)) + np.finfo(np.float64).eps)
 
 
-def closest_pairs_greedy(pts_from, pts_to):
+def closest_pairs_greedy(pts_from, pts_to, indices_only=False):
+    """Get pts_to ordered by greedy closest-pairing
+
+    greedy = choose the closest pair, remove the pair from the pool
+    pairs are inherently disjoint
+    """
     dists = cdist(pts_from, pts_to)
-    assert len(dists.shape) == 2
+    # assert len(dists.shape) == 2
     fill_value = np.max(dists) + 1
-    ret = np.zeros_like(pts_to)
+    if indices_only:
+        ret = np.zeros_like(pts_from[0])
+    else:
+        ret = np.zeros_like(pts_from)
 
     for _ in range(len(pts_from)):
-        ind = np.unravel_index(np.argmin(dists), dists.shape)
-        # ind = [from, to]
-        ret[ind[0]] = pts_to[ind[1]]
-        dists[:, ind[1]] = fill_value
+        idx = np.unravel_index(np.argmin(dists), dists.shape)
+        # idx = [from, to]
+        if indices_only:
+            ret[idx[0]] = idx[1]
+        else:
+            ret[idx[0]] = pts_to[idx[1]]
+
+        dists[:, idx[1]] = fill_value
+        dists[idx[0], :] = fill_value
+
+    return ret
+
+
+def closest_pairs_in_order(pts_from, pts_to, indices_only=False):
+    dists = cdist(pts_from, pts_to)
+    fill_value = np.max(dists) + 1
+    ret = []
+    for to_pts_to in dists:
+        idx = np.argmin(to_pts_to)
+
+        if indices_only:
+            ret.append(idx)
+        else:
+            ret.append(pts_to[idx])
+
+        dists[:, idx] = fill_value
 
     return ret
 
 
 def count_points_on_line(points, line, dst_th=10, show=False):
+    """Count `points` on `line` """
+    if len(points) == 0:
+        return 0  # just corners
+
     p1, p2 = line
 
     # p3 = next(iter(points_cv))
@@ -185,12 +223,10 @@ def count_points_on_line(points, line, dst_th=10, show=False):
     low = np.min(line, axis=0) - tolerance
     high = np.max(line, axis=0) + tolerance
     idx_inside = np.all(np.logical_and(points >= low, points <= high), axis=1)
-
     wrapper = points[idx_inside]
 
     # based on https://stackoverflow.com/questions/39840030/distance-between-point-and-a-line-from-two-points
     dists = np.abs(np.cross(p2 - p1, p1 - wrapper)) / np.linalg.norm(p2 - p1)
-    # dists /= np.max(dists)
 
     on_the_line = np.argwhere(dists < dst_th)[:, 0]
 
@@ -228,6 +264,8 @@ if __name__ == '__main__':
 
     # file = next(iter(labels.image.unique()[::-1]))
     for file in labels.image.unique():
+        # if True:
+        # file = '20201020_113607.jpg'
         print(file)
         file_labels = labels[labels.image == file]
 
@@ -351,6 +389,7 @@ if __name__ == '__main__':
         # try:
         if True:
             """
+            Using CV order for everything
             1) connect closest bottom-top pairs
                 start with bottom points
                 connect each with its closest top point
@@ -364,20 +403,26 @@ if __name__ == '__main__':
             pts_top = get_cat_points(file_labels, 'corner-top', cv=True)
             pts_bottom = get_cat_points(file_labels, 'corner-bottom', cv=True)
 
+            # reorder to descending Y => from lowest to highest (image-coords start in top-left)
+            pts_bottom = pts_bottom[np.argsort(pts_bottom[:, 0])[::-1]]
+
             if len(pts_bottom) == 3:
                 # consider any two of the bottom points to be 'front'
                 pts_bottom_front = pts_bottom[:2]
             else:
                 pts_bottom_front = pts_bottom
 
-            dists_bottom_top = cdist(pts_top, pts_bottom_front)
-            closest_top_front_indices = np.argmin(dists_bottom_top, axis=0)
-            assert len(np.unique(closest_top_front_indices)) == len(closest_top_front_indices), \
-                'bottom-top closest pairs not disjoint'
-            # ordering for bottom-to-top-front
-            pts_top_front = pts_top[closest_top_front_indices]
-
-            # ^ todo see doc for shortcomings
+            if False:
+                dists_bottom_top = cdist(pts_top, pts_bottom_front)
+                closest_top_front_indices = np.argmin(dists_bottom_top, axis=0)
+                assert len(np.unique(closest_top_front_indices)) == len(closest_top_front_indices), \
+                    'bottom-top closest pairs not disjoint'
+                # ordering for bottom-to-top-front
+                pts_top_front = pts_top[closest_top_front_indices]
+                # ^ see doc for shortcomings
+            else:
+                closest_top_front_indices = closest_pairs_in_order(pts_bottom_front, pts_top, indices_only=True)
+                pts_top_front = pts_top[closest_top_front_indices]
 
             # top non-front points
             pts_top_back = inverse_index(pts_top, closest_top_front_indices)  # compare
@@ -391,23 +436,27 @@ if __name__ == '__main__':
             pts_left = np.vstack([pts_top_front[0], pts_top_back[0], pts_bottom_front[0]])
             pts_right = np.vstack([pts_top_front[1], pts_top_back[1], pts_bottom_front[1]])
 
-            c = canvas_cv.copy()
+            if False:
+                for i in range(len(pts_bottom_front)):
+                    pt = pts_bottom_front[i]
+                    ccl = skimage.draw.disk(pt, radius=5 + i * 10)
+                    canvas_cv[ccl] = 100
 
             # Z
             # bottom -> top line
-            connect_points(c, pts_bottom_front, pts_top_front)
+            connect_points(canvas_cv, pts_bottom_front, pts_top_front, c=120)
 
             # Y
             # top-front -> top-back line
-            connect_points(c, pts_top_front, pts_top_back)
+            connect_points(canvas_cv, pts_top_front, pts_top_back, c=120)
 
             # X
             # left -> right
-            connect_points(c, pts_left, pts_right)
+            connect_points(canvas_cv, pts_left, pts_right, c=120)
 
-            # connect_points(c, pts_top_front[::2], pts_top_front[1::2])
-            # connect_points(c, pts_top_back[::2], pts_top_back[1::2])
-            # connect_points(c, pts_bottom_front[::2], pts_bottom_front[1::2])
+            # connect_points(canvas_cv, pts_top_front[::2], pts_top_front[1::2])
+            # connect_points(canvas_cv, pts_top_back[::2], pts_top_back[1::2])
+            # connect_points(canvas_cv, pts_bottom_front[::2], pts_bottom_front[1::2])
 
             # x = []  # left-to-right
             # y = []  # front-to-back
@@ -419,7 +468,7 @@ if __name__ == '__main__':
 
             # print(f'Axes in cv order[y, x]\n{x=}\n{y=}\n{z=}\n')
 
-            plt.imshow(c)
+            plt.imshow(canvas_cv)
             plt.title(file)
             plt.show()
 
@@ -455,7 +504,10 @@ if __name__ == '__main__':
             # counting points needs to use also intersection categories
             # instead of all points, also just pass categories accordingly
 
-            total = (count_x - 1) * (count_y - 1) * (count_z - 1)
+            total = (count_x + 1) * (count_y + 1) * (count_z + 1)
+            # +2 corners per dim,
+            # -1 because line edges = (vertices - 1)
+
             print(f'{total=}')
             gt = np.array(counts_gt[counts_gt.image == file].cnt)[0]
             if gt != total:

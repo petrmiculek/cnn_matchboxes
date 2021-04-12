@@ -13,126 +13,121 @@ https://colab.research.google.com/drive/1F28FEGGLmy8-jW9IaOo60InR9VQtPbmG
 # stdlib
 import os
 import sys
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import datetime
-from contextlib import redirect_stdout
 
 # external libs
 import tensorflow as tf
 from tensorflow.python.framework.errors_impl import NotFoundError
-
-import cv2 as cv
-import numpy as np
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-from IPython.display import Image, display
 from tensorboard.plugins.hparams import api as hp
+
+# import cv2 as cv
+# import numpy as np
+# import matplotlib as mpl
+# import matplotlib.pyplot as plt
+# import matplotlib.cm as cm
+# from IPython.display import Image, display
 
 # hacky, just for profiling
 sys.path.extend(['/home/petrmiculek/Code/light_matches',
                  '/home/petrmiculek/Code/light_matches/src',
                  '/home/petrmiculek/Code/light_matches/src_util'])
+
 # local files
 import models
 import model_ops
 import util
 from datasets import get_dataset
-from show_results import evaluate_model, show_layer_activations, heatmaps_all
-from src_util.general import safestr, DuplicateStream
+from eval_images import full_prediction_all
+from eval_samples import evaluate_model, show_layer_activations
 from logging_results import log_model_info
 from mining import mine_hard_cases
-from src_util.general import timing
+from src_util.general import safestr, DuplicateStream, timing
+import run_config
 
 
-# when profiling disabled
-# def profile(x):
-#     return x
-
-# @pro file
-def run(model_builder, model_kwargs={}, dataset_size=200, augment=False, train=True, ds_dim=64):
+def run(model_builder, hparams):
     """
     # execute if running in Py console
     model_builder = models.dilated_64x_exp2
     model_kwargs={'pool': 'max'}
-    dataset_size=1000
-    augment=False
-    train = True
-    show = True
-    ds_dim=64
     """
-    # for batch-running
-    # if True:
-    try:
-        hard_mining = False
-        show = False
-        scale = 0.5
-        use_weights = model_kwargs['use_weights'] if 'use_weights' in model_kwargs else False
+    if False:
+        # provided by caller
+        run_config.dataset_dim = 64
+        run_config.dataset_size = 200
+        run_config.augment = True
+        run_config.train = True
+        run_config.show = False
+        run_config.use_weights = False
+        run_config.scale = 0.5
+        run_config.center_crop_fraction = 0.5
 
-        data_dir = f'/data/datasets/{ds_dim}x_{int(100 * scale):03d}s_{dataset_size}bg'
-        # data_dir = f'datasets/{ds_dim}x_{int(100 * scale):03d}s_{dataset_size}bg'
-        checkpoint_path = util.get_checkpoint_path()
+    hard_mining = False
+
+    # for batch-running
+    # try:
+    if True:
+        dataset_dir = f'/data/datasets/{run_config.dataset_dim}x_{int(100 * run_config.scale):03d}s_{run_config.dataset_size}bg'
+        run_config.checkpoint_path = util.get_checkpoint_path()
 
         time = safestr(datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
 
         """ Load dataset """
-        val_ds, _, _ = get_dataset(data_dir + '_val')
-        train_ds, class_names, class_weights = get_dataset(data_dir)
-        num_classes = len(class_names)
+        val_ds, _, _ = get_dataset(dataset_dir + '_val')
+        train_ds, run_config.class_names, class_weights = get_dataset(dataset_dir, use_weights=run_config.use_weights)
+        # num_classes = len(run_config.class_names)
 
         """ Create/Load a model """
-        if train:
-            base_model, model, data_augmentation, callbacks = model_ops.build_new_model(model_builder,
-                                                                                        model_kwargs,
-                                                                                        class_names,
-                                                                                        augment=augment,
-                                                                                        name_suffix=time,
-                                                                                        ds_dim=ds_dim,
-                                                                                        checkpoint_path=checkpoint_path,
-                                                                                        dataset_size=dataset_size,
-                                                                                        )
+        if run_config.train:
+            base_model, model, aug_model = model_ops.build_new_model(model_builder, hparams, name_suffix=time)
+            callbacks = model_ops.get_callbacks()
 
         else:
             # load_model_name = 'dilated_64x_exp2_2021-03-26-04-57-57_full'  # /data/datasets/64x_050s_500bg
             # load_model_name = 'dilated_64x_exp2_2021-03-27-06-36-50_full'  # /data/datasets/128x_050s_500bg
-            load_model_name = 'dilated_32x_exp22021-03-28-16-38-11_full'  # /data/datasets/64x_050s_500bg
+            # load_model_name = 'dilated_32x_exp22021-03-28-16-38-11_full'  # /data/datasets/64x_050s_500bg
             load_model_name = 'dilated_64x_exp2_2021-03-29-15-58-47_full'  # /data/datasets/128x_050s_1000bg
-            config = os.path.join('outputs', load_model_name, 'model_config.json')
-            weights = os.path.join('models_saved', load_model_name)
+            model_config_path = os.path.join('outputs', load_model_name, 'model_config.json')
+            weights_path = os.path.join('models_saved', load_model_name)
 
-            base_model, model, data_augmentation, callbacks = model_ops.load_model(config, class_names, weights)
+            base_model, model, aug_model = model_ops.load_model(model_config_path, weights_path)
+            callbacks = get_callbacks()
+            run_config.epochs_trained = 123  #
 
         """ Model outputs dir """
+        run_config.output_location = os.path.join('outputs', model.name + '_reloaded' * (not run_config.train))
+        if not os.path.isdir(run_config.output_location):
+            os.makedirs(run_config.output_location, exist_ok=True)
 
-        output_location = os.path.join('outputs', model.name + '_reloaded' * (not train))
-        if not os.path.isdir(output_location):
-            os.makedirs(output_location, exist_ok=True)
-
+        """ Copy stdout to file """
         stdout_orig = sys.stdout
-        out_stream = open(os.path.join(output_location, 'stdout.txt'), 'a')
+        out_stream = open(os.path.join(run_config.output_location, 'stdout.txt'), 'a')
         sys.stdout = DuplicateStream(sys.stdout, out_stream)
 
-        log_model_info(model, output_location)
-        print(model_kwargs)
+        log_model_info(model, run_config.output_location)
+        print({h: hparams[h] for h in hparams})
 
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
         tf.get_logger().setLevel('ERROR')  # suppress warnings about early-stopping and model-checkpoints
-        epochs_trained = 0
 
-        if train:
+        run_config.epochs_trained = 0
+
+        if run_config.train:
             epochs = 50
             if hard_mining:
 
                 epochs_to_reshuffle = 10
                 curr_ds = train_ds
-                while epochs_trained < epochs:
+                while run_config.epochs_trained < epochs:
                     """ Train the model"""
                     model.fit(
                         curr_ds,
                         validation_data=val_ds,
                         validation_freq=5,
-                        epochs=(epochs_to_reshuffle + epochs_trained),
-                        initial_epoch=epochs_trained,
+                        epochs=(epochs_to_reshuffle + run_config.epochs_trained),
+                        initial_epoch=run_config.epochs_trained,
                         callbacks=callbacks,
                         class_weight=class_weights,
                         verbose=2  # one line per epoch
@@ -144,25 +139,25 @@ def run(model_builder, model_kwargs={}, dataset_size=200, augment=False, train=T
                     curr_ds = tf.data.experimental.sample_from_datasets([train_ds, hard_ds], weights=[0.5, 0.5])
                     curr_ds = curr_ds.batch(64).prefetch(2)
 
-                    epochs_trained += epochs
+                    run_config.epochs_trained += epochs
             else:
                 try:
                     model.fit(
                         train_ds,
                         validation_data=val_ds,
                         validation_freq=5,
-                        epochs=(epochs + epochs_trained),
-                        initial_epoch=epochs_trained,
+                        epochs=(epochs + run_config.epochs_trained),
+                        initial_epoch=run_config.epochs_trained,
                         callbacks=callbacks,
-                        # class_weight=class_weights,  # WITHOUT
+                        class_weight=class_weights,
                         verbose=2  # one line per epoch
                     )
                 except KeyboardInterrupt:
                     print('Training stopped preemptively')
-                epochs_trained += epochs
+                run_config.epochs_trained += epochs
             try:
-                if epochs_trained > 5:
-                    model.load_weights(checkpoint_path)  # checkpoint
+                if run_config.epochs_trained > 5:
+                    model.load_weights(run_config.checkpoint_path)  # checkpoint
             except NotFoundError:
                 # might not be present if trained for <K epochs
                 pass
@@ -172,31 +167,41 @@ def run(model_builder, model_kwargs={}, dataset_size=200, augment=False, train=T
 
         """Evaluate model"""
 
-        # show = True
-        # output_location = None  # do-not-save flag
-        val_accu = evaluate_model(model, val_ds, class_names, epochs_trained, output_location=output_location,
-                                  show=show, misclassified=True, val=True)
-        # visualize_results(model, train_ds, class_names, epochs_trained, output_location=output_location, show=show)
+        # run_config.show = True
+        # run_config.output_location = None  # do-not-save flag
+        val_accu = evaluate_model(model, val_ds, val=True, output_location=run_config.output_location,
+                                  show=run_config.show, misclassified=False)
 
-        if val_accu < 90.0:  # %
+        evaluate_model(model, train_ds, val=False, output_location=run_config.output_location, show=run_config.show)
+
+        if val_accu < 95.0:  # %
             print('Val accu too low:', val_accu, 'skipping heatmaps')
             return
             # sys.exit(0)
 
         """Full image prediction"""
-        heatmaps_all(base_model, class_names, val=True, output_location=output_location, show=show,
-                     epochs_trained=epochs_trained)
-        heatmaps_all(base_model, class_names, val=False, output_location=output_location, show=show,
-                     epochs_trained=epochs_trained)
+        avg_mse_val = full_prediction_all(base_model, val=True, output_location=run_config.output_location,
+                                          show=run_config.show)
+        avg_mse_train = full_prediction_all(base_model, val=False, output_location=run_config.output_location,
+                                            show=False)
+
+        val_metrics = model.evaluate(val_ds)
+        pr_value_val = val_metrics[4]
+
+        with tf.summary.create_file_writer(run_config.run_logs_dir + '/hparams').as_default():
+            hp.hparams(hparams, trial_id=run_config.model_name)
+            tf.summary.scalar('mse', avg_mse_train, step=run_config.epochs_trained)
+            tf.summary.scalar('mse_val', avg_mse_val, step=run_config.epochs_trained)
+            tf.summary.scalar('pr_value_val', pr_value_val, step=run_config.epochs_trained)
 
         """Per layer activations"""
-        show_layer_activations(base_model, data_augmentation, val_ds, class_names, show=show,
-                               output_location=output_location)
+        show_layer_activations(base_model, aug_model, val_ds, show=False,
+                               output_location=run_config.output_location)
 
         # restore original stdout
         sys.stdout = stdout_orig
-    except Exception as ex:
-        print(ex, file=sys.stderr)
+    # except Exception as ex:
+    #     print(ex, file=sys.stderr)
 
 
 def tf_init():
@@ -217,11 +222,49 @@ def tf_init():
 
 if __name__ == '__main__':
     tf_init()
-    model_kwargs = {'pool': 'max',
-                    'use_weights': False,
-                    'pool_after_first_conv': True,
-                    'base_width': 8,
-                    }
-    # run(models.dilated_64x_exp2, dataset_size=200, train=True, model_kwargs={'pool': 'max'})
-    run(models.dilated_64x_exp2, model_kwargs=model_kwargs, dataset_size=1000, train=True, ds_dim=128, )
+
+    run_config.dataset_size = 1000
+    run_config.train = True
+    # train dim decided by model
+    run_config.dataset_dim = 64
+    run_config.augment = True
+    run_config.use_weights = False
+    run_config.show = False
+    run_config.scale = 0.25
+    run_config.center_crop_fraction = 0.5
+
+    # model params
+    hp_base_width = hp.HParam('base_width', hp.Discrete([8, 16, 32]))
+
+    # non-model params
+    hp_ds_bg_samples = hp.HParam('ds_bg_samples', hp.Discrete([200, 700, 1000]))
+    hp_augmentation = hp.HParam('augmentation', hp.Discrete([False, True]))
+    hp_scale = hp.HParam('scale', hp.Discrete([0.25, 0.5]))
+    hp_crop_fraction = hp.HParam('crop_fraction', hp.Discrete([0.5, 1.0]))
+    # METRIC_MSE = 'mse'
+
+    with tf.summary.create_file_writer('logs').as_default():
+        hp.hparams_config(
+            hparams=[
+                hp_base_width,
+                hp_ds_bg_samples,
+                hp_augmentation,
+                hp_scale,
+                hp_crop_fraction,
+            ],
+            metrics=[hp.Metric('mse')],
+        )
+
+    m = models.dilated_32x_odd
+    hparams = {
+        'base_width': 32,
+
+        'augmentation': run_config.augment,
+        'ds_bg_samples': run_config.dataset_size,
+        'scale': run_config.scale,
+        'crop_fraction': run_config.center_crop_fraction,
+        # 'tail_downscale': 2  # try if logging to tb fails
+    }
+    run(m, hparams)
+
     pass
