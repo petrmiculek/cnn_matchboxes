@@ -1,12 +1,15 @@
+# stdlib
 import os
 import sys
 from math import floor, ceil, log10
 
+# external
 import cv2 as cv
 import numpy as np
 import pandas as pd
 from scipy.spatial.distance import cdist
 
+# local
 import run_config
 from general import lru_cache
 from labels import load_labels, rescale_labels
@@ -14,23 +17,27 @@ from logging_results import log_mean_square_error_csv
 from show_results import display_predictions
 
 
-def get_image_as_batch(img_path, scale=1.0, center_crop_fraction=1.0):
+def load_image(img_path, scale=1.0, center_crop_fraction=1.0):
     """Open and Process image
 
+    OpenCV coordinates [y, x] for image
+    NumPy coordinates for orig_size [x, y, c=channels]
+
     :param img_path: Path for loading image
-    :param scale: Rescale image
+    :param scale: Rescale image factor
     :param center_crop_fraction: Crop out rectangle with sides equal to a given fraction of original image
-    :return:
+    :return: image [y, x], original image shape [x, y, c]
     """
 
     img = cv.imread(img_path)
 
-    orig_size = img.shape[1], img.shape[0], img.shape[2]  # reversed indices
+    orig_size = np.array((img.shape[1], img.shape[0], img.shape[2]))  # reversed indices
 
     if center_crop_fraction != 1.0:
         # crop from center
         low = (1 - center_crop_fraction) / 2
         high = (1 + center_crop_fraction) / 2
+
         img = img[int(img.shape[0] * low): int(img.shape[0] * high),
                   int(img.shape[1] * low): int(img.shape[1] * high),
                   :]
@@ -38,8 +45,7 @@ def get_image_as_batch(img_path, scale=1.0, center_crop_fraction=1.0):
     img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
     img = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)),
                     interpolation=cv.INTER_AREA)  # reversed indices, OK
-    img_batch = np.expand_dims(img, 0)
-    return img_batch, orig_size
+    return img, orig_size
 
 
 def make_prediction(base_model, img, maxes_only=False, undecided_only=False):
@@ -57,7 +63,7 @@ def make_prediction(base_model, img, maxes_only=False, undecided_only=False):
     # ^ since `import tensorflow` starts libcudart, it needs not to be at module-level
     # it makes a difference when a non-tf function from this module is imported in a non-tf environment
 
-    predictions_raw = base_model.predict(tf.convert_to_tensor(img, dtype=tf.uint8))
+    predictions_raw = base_model.predict(tf.convert_to_tensor(tf.expand_dims(img, 0), dtype=tf.uint8))
     predictions = tf.squeeze(predictions_raw).numpy()
 
     if maxes_only and not undecided_only:
@@ -80,43 +86,21 @@ def make_prediction(base_model, img, maxes_only=False, undecided_only=False):
     return predictions
 
 
-def crop_to_prediction(img, pred):
-    model_crop_delta = img.shape[0] - pred.shape[0]
+def crop_to_prediction(img, pred_shape):
+    assert img.shape[0] - pred_shape[0] == img.shape[1] - pred_shape[1]
+    model_crop_delta = img.shape[0] - pred_shape[0]
     low = floor(model_crop_delta / 2)
     high = ceil(model_crop_delta / 2)
 
     return img[low:-high, low:-high], model_crop_delta
 
 
-@lru_cache(copy=True)
+@lru_cache
 def grid_like(x, y):
     grid = np.meshgrid(np.arange(x), np.arange(y))
     grid = np.vstack([grid])
     grid = np.transpose(grid, (1, 2, 0))
     return grid
-
-
-def rescale_labels_dict(dict_labels, orig_img_size, scale, model_crop_delta, center_crop_fraction):
-    """Unused"""
-    new = dict()
-    for cat, labels in dict_labels.items():
-        new_l = []
-        for pos in labels:
-            p = int(pos[0]) * scale, \
-                int(pos[1]) * scale  # e.g. 3024 -> 1512
-
-            center_crop_diff = orig_img_size[0] * scale * (1 - center_crop_fraction) // 2, \
-                               orig_img_size[1] * scale * (1 - center_crop_fraction) // 2
-
-            p = p[0] - center_crop_diff[0], \
-                p[1] - center_crop_diff[1]  # e.g. 1512 - 378 -> 1134
-
-            p = p[0] - model_crop_delta // 2, \
-                p[1] - model_crop_delta // 2
-            new_l.append(p)
-        new[cat] = new_l
-
-    return new
 
 
 def mean_square_error(predictions, img_path, file_labels, class_names, base_model):
@@ -168,12 +152,10 @@ def mean_square_error(predictions, img_path, file_labels, class_names, base_mode
 
     """ keypoint categories """
     for i, cat in enumerate(class_names[1:], start=1):  # skip 0 == background
-        # filter predictions of given category
+        # filter only predictions of given category
         cat_list = grid[p_argmax == i]
-        # cat_mask = np.where(p_argmax == i, True, False)  # 2D mask
 
-        if cat not in file_labels.category.values:  # no GT labels of this category
-            # predicted non-present category
+        if cat not in file_labels.category.values:
             category_losses[cat] = len(cat_list) * no_such_cat_penalty / run_config.scale**2
             continue
 
@@ -191,8 +173,7 @@ def mean_square_error(predictions, img_path, file_labels, class_names, base_mode
     # log to csv
     log_mean_square_error_csv(base_model.name, img_path, loss_sum, loss_values_only)
 
-    return loss_sum, \
-           [str(cat) + ': 1e{0:0.2g}'.format(log10(loss + 1)) for cat, loss in category_losses.items()]
+    return loss_sum, category_losses
 
 
 def full_prediction(base_model, class_names, file_labels, img_path, output_location=None,
@@ -209,20 +190,20 @@ def full_prediction(base_model, class_names, file_labels, img_path, output_locat
     :param undecided_only: Show only predictions that were
     """
 
-    img, orig_size = get_image_as_batch(img_path, run_config.scale, run_config.center_crop_fraction)
+    img, orig_size = load_image(img_path, run_config.scale, run_config.center_crop_fraction)
 
     predictions = make_prediction(base_model, img, maxes_only, undecided_only)
-    img = img[0]  # remove batch dimension
 
+    # temporary - save predictions
     os.makedirs('preds', exist_ok=True)
-    # os.makedirs(os.path.join('preds', run_config.model_name), exist_ok=True)
     preds_file_path = os.path.join('preds', img_path.split('/')[-1] + '.npy')
 
     with open(preds_file_path, 'wb') as f:
+        # noinspection PyTypeChecker
         np.save(f, predictions)
 
     # Model prediction is cropped, adjust image accordingly
-    img, model_crop_delta = crop_to_prediction(img, predictions)
+    img, model_crop_delta = crop_to_prediction(img, predictions.shape)
 
     category_titles = class_names
 
@@ -238,7 +219,8 @@ def full_prediction(base_model, class_names, file_labels, img_path, output_locat
 
             losses_sum, category_losses = mean_square_error(predictions, img_path, file_labels, class_names,
                                                             base_model)
-            category_titles = category_losses
+
+            category_titles = ['{}: 1e{:0.2g}'.format(cat, log10(loss + 1)) for cat, loss in category_losses.items()]
             plots_title = str(losses_sum // 1e6) + 'M'
 
             show_mse_location(predictions, img, img_path, file_labels, class_names,
@@ -322,6 +304,8 @@ def show_mse_location(predictions, img, img_path, file_labels, class_names, outp
 
         distance_layers = list(map(dst_pt2grid, cat_labels))
         distance_layers = np.vstack([distance_layers])
+
+        # normalizing ~~
         distance_layers = distance_layers / np.sqrt(np.max(distance_layers))
 
         min_distance = np.min(distance_layers, axis=0)  # minimum distance to any keypoint

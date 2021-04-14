@@ -113,3 +113,26 @@ def rescale_labels(labels, scale, model_crop_delta, center_crop_fraction):
     print(img_size)  # prediction should be just as big
 
     return labels
+
+
+def rescale_labels_dict(dict_labels, orig_img_size, scale, model_crop_delta, center_crop_fraction):
+    """Unused"""
+    new = dict()
+    for cat, labels in dict_labels.items():
+        new_l = []
+        for pos in labels:
+            p = int(pos[0]) * scale, \
+                int(pos[1]) * scale  # e.g. 3024 -> 1512
+
+            center_crop_diff = orig_img_size[0] * scale * (1 - center_crop_fraction) // 2, \
+                               orig_img_size[1] * scale * (1 - center_crop_fraction) // 2
+
+            p = p[0] - center_crop_diff[0], \
+                p[1] - center_crop_diff[1]  # e.g. 1512 - 378 -> 1134
+
+            p = p[0] - model_crop_delta // 2, \
+                p[1] - model_crop_delta // 2
+            new_l.append(p)
+        new[cat] = new_l
+
+    return new

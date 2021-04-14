@@ -184,11 +184,13 @@ def evaluate_model(model, dataset, val=False, output_location=None, show=False, 
     confusion_matrix(labels, predictions, output_location=output_location, show=show, val=val, normalize=False)
 
     """More metrics"""
-    accuracy = 100.0 * (1 - len(false_predictions) / len(predictions))
-
     print('Validation:' if val else 'Training:')
-    print('\tAccuracy: {0:0.3g}%'.format(accuracy))
+    try:
+        accuracy = 100.0 * (1 - len(false_predictions) / len(predictions))
+    except Exception:  # todo test
+        accuracy = 100.0 * (1 - len(false_predictions.numpy()) / len(predictions.numpy()))
 
+    print('\tAccuracy: {0:0.3g}%'.format(accuracy))
     print(classification_report(labels, predictions))
 
     return accuracy

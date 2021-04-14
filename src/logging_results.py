@@ -1,12 +1,9 @@
 # stdlib
 import csv
-import json
 import os
 
 # external
-import numpy as np
-import tensorflow as tf
-from tensorflow.keras.utils import plot_model
+# -
 
 
 def log_model_info(model, output_location=None):
@@ -16,6 +13,8 @@ def log_model_info(model, output_location=None):
     :param output_location:
     :return:
     """
+    from tensorflow.keras.utils import plot_model
+
     if len(model.layers) == 2:
         aug = model.layers[0]
         base_model = model.layers[1]
