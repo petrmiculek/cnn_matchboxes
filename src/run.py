@@ -48,10 +48,7 @@ import run_config
 
 
 def run(model_builder, hparams):
-    """
-    # execute if running in Py console
-    model_builder = models.dilated_64x_exp2
-    model_kwargs={'pool': 'max'}
+    """Perform a single training run
     """
     if False:
         # provided by caller
@@ -77,7 +74,6 @@ def run(model_builder, hparams):
         """ Load dataset """
         val_ds, _, _ = get_dataset(dataset_dir + '_val')
         train_ds, run_config.class_names, class_weights = get_dataset(dataset_dir, use_weights=run_config.use_weights)
-        # num_classes = len(run_config.class_names)
 
         """ Create/Load a model """
         if run_config.train:
@@ -85,16 +81,13 @@ def run(model_builder, hparams):
             callbacks = model_ops.get_callbacks()
 
         else:
-            # load_model_name = 'dilated_64x_exp2_2021-03-26-04-57-57_full'  # /data/datasets/64x_050s_500bg
-            # load_model_name = 'dilated_64x_exp2_2021-03-27-06-36-50_full'  # /data/datasets/128x_050s_500bg
-            # load_model_name = 'dilated_32x_exp22021-03-28-16-38-11_full'  # /data/datasets/64x_050s_500bg
             load_model_name = 'dilated_64x_exp2_2021-03-29-15-58-47_full'  # /data/datasets/128x_050s_1000bg
             model_config_path = os.path.join('outputs', load_model_name, 'model_config.json')
             weights_path = os.path.join('models_saved', load_model_name)
 
             base_model, model, aug_model = model_ops.load_model(model_config_path, weights_path)
-            callbacks = get_callbacks()
-            run_config.epochs_trained = 123  #
+            callbacks = model_ops.get_callbacks()
+            run_config.epochs_trained = 123
 
         """ Model outputs dir """
         run_config.output_location = os.path.join('outputs', model.name + '_reloaded' * (not run_config.train))
@@ -185,14 +178,19 @@ def run(model_builder, hparams):
         avg_mse_train = full_prediction_all(base_model, val=False, output_location=run_config.output_location,
                                             show=False)
 
-        val_metrics = model.evaluate(val_ds)
+        val_metrics = model.evaluate(val_ds, verbose=0)  # 5 metrics, as per model_ops.compile_model
         pr_value_val = val_metrics[4]
 
-        with tf.summary.create_file_writer(run_config.run_logs_dir + '/hparams').as_default():
-            hp.hparams(hparams, trial_id=run_config.model_name)
-            tf.summary.scalar('mse', avg_mse_train, step=run_config.epochs_trained)
-            tf.summary.scalar('mse_val', avg_mse_val, step=run_config.epochs_trained)
-            tf.summary.scalar('pr_value_val', pr_value_val, step=run_config.epochs_trained)
+        print('avg_mse: {}'.format(avg_mse_train))
+        print('avg_mse_val: {}'.format(avg_mse_val))
+        print('pr_value_val: {}'.format(pr_value_val))
+
+        if run_config.train:
+            with tf.summary.create_file_writer(run_config.run_logs_dir + '/hparams').as_default():
+                hp.hparams(hparams, trial_id=run_config.model_name)
+                tf.summary.scalar('mse', avg_mse_train, step=run_config.epochs_trained)
+                tf.summary.scalar('mse_val', avg_mse_val, step=run_config.epochs_trained)
+                tf.summary.scalar('pr_value_val', pr_value_val, step=run_config.epochs_trained)
 
         """Per layer activations"""
         show_layer_activations(base_model, aug_model, val_ds, show=False,
@@ -241,7 +239,6 @@ if __name__ == '__main__':
     hp_augmentation = hp.HParam('augmentation', hp.Discrete([False, True]))
     hp_scale = hp.HParam('scale', hp.Discrete([0.25, 0.5]))
     hp_crop_fraction = hp.HParam('crop_fraction', hp.Discrete([0.5, 1.0]))
-    # METRIC_MSE = 'mse'
 
     with tf.summary.create_file_writer('logs').as_default():
         hp.hparams_config(

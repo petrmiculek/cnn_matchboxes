@@ -386,9 +386,32 @@ if __name__ == '__main__':
             plt.show()
 
         """ Use categories """
+        # start from the top
+        pts_top = get_cat_points(file_labels, 'corner-top', cv=True)
+        pts_bottom = get_cat_points(file_labels, 'corner-bottom', cv=True)
+
+        if len(pts_top) != 4:
+            print('skipping - need 4 top points')
+            continue
+
+        from scipy.spatial import ConvexHull, convex_hull_plot_2d
+
+        hull = ConvexHull(pts_top)
+
+        plt.plot(pts_top[:, 0], pts_top[:, 1], 'o')
+        for simplex in hull.simplices:
+            plt.plot(pts_top[:, 0], pts_top[:, 1], 'o')
+            plt.plot(*pts_top[simplex[0], :], '*')
+            plt.plot(pts_top[simplex, 0], pts_top[simplex, 1], 'k-')
+            plt.show()
+
+        plt.show()
+
         # try:
-        if True:
+        if False:
             """
+            This started from the bottom.
+            
             Using CV order for everything
             1) connect closest bottom-top pairs
                 start with bottom points

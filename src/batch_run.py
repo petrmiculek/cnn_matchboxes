@@ -162,9 +162,12 @@ if __name__ == '__main__':
                 hp_scale,
                 hp_crop_fraction,
             ],
-            metrics=[hp.Metric('mse'), hp.Metric('mse_val'), hp.Metric('pr_value_val')],
+            metrics=[
+                hp.Metric('mse'),
+                hp.Metric('mse_val'),
+                hp.Metric('pr_value_val')],
         )
-
+    """
     for m in [parameterized(recipe_32x_odd),
               parameterized(recipe_32x_flat5),
               parameterized(recipe_32x_exp2),
@@ -181,3 +184,65 @@ if __name__ == '__main__':
                 # 'tail_downscale': 2  # try if logging to tb fails
             }
             run(m, hparams)
+    """
+
+    """
+    for m in [parameterized(recipe_64x_odd),
+              parameterized(recipe_64x_basic),
+              ]:
+        for width in hp_base_width.domain.values:
+            hparams = {
+                'base_width': width,
+
+                'augmentation': run_config.augment,
+                'ds_bg_samples': run_config.dataset_size,
+                'scale': run_config.scale,
+                'crop_fraction': run_config.center_crop_fraction,
+                # 'tail_downscale': 2  # try if logging to tb fails
+            }
+            run(m, hparams)
+    """
+    for m in [parameterized(recipe_32x_odd)]:
+        for width in hp_base_width.domain.values:
+            for augmentation in hp_augmentation.domain.values:
+                for scale in hp_scale.domain.values:
+                    hparams = {
+                        'base_width': width,
+                        'augmentation': augmentation,
+                        'scale': scale,
+
+                        'ds_bg_samples': run_config.dataset_size,
+                        'crop_fraction': run_config.center_crop_fraction,
+                        'non_cropping_conv': True,
+                    }
+                    run(m, hparams)
+
+    for m in [parameterized(recipe_32x_d7531),
+              parameterized(recipe_32x_flat5), ]:
+        for width in hp_base_width.domain.values:
+            hparams = {
+                'base_width': width,
+                'augmentation': run_config.augment,
+                'scale': run_config.scale,
+
+                'ds_bg_samples': run_config.dataset_size,
+                'crop_fraction': run_config.center_crop_fraction,
+            }
+            run(m, hparams)
+
+    run_config.dataset_dim = 128
+
+    for m in [parameterized(recipe_64x_odd)]:
+        for width in hp_base_width.domain.values:
+            for augmentation in hp_augmentation.domain.values:
+                for scale in hp_scale.domain.values:
+                    hparams = {
+                        'base_width': width // 2,
+                        'augmentation': augmentation,
+                        'scale': scale,
+
+                        'ds_bg_samples': run_config.dataset_size,
+                        'crop_fraction': run_config.center_crop_fraction,
+                    }
+                    run(m, hparams)
+

@@ -148,7 +148,7 @@ def parameterized(recipe=None):
         x = Input(shape=(None, None, 3))  # input_dim, input_dim  # <- use for model.summary() to see layer sizes
         input_layer = x
 
-        if hparams['non_cropping_conv'] if 'non_cropping_conv' in hparams else False:
+        if 'non_cropping_conv' in hparams and hparams['non_cropping_conv']:
             x = Conv2D(base_width, 3, kernel_initializer=he_norm, activation='relu', padding='same')(x)
             x = MaxPool2D((2, 2), strides=(1, 1), padding='same')(x)
             x = BatchNormalization()(x)
@@ -209,10 +209,6 @@ def recipe_64x_basic():
     widths = [2] * 5 + [4] * 5 + [8] * 5 + [8, 8]
 
     return kernels, dilations, widths
-
-
-# no recipe_32x_odd
-#   needs non-cropping-conv
 
 
 def recipe_32x_flat5():

@@ -12,7 +12,6 @@ import run_config
 
 def compile_model(model):
     """ Custom loss and metrics """
-    # scce_loss = util.Scce(name='scce_loss')  # test tensor shapes
     scce_loss = tf.losses.SparseCategoricalCrossentropy(from_logits=False)
     accu = util.Accu(name='accu')  # ~= SparseCategoricalAccuracy
     prec = util.Precision(name='prec')
@@ -33,7 +32,10 @@ def compile_model(model):
                  ])
 
 
-def load_model(model_config_path, weights_path=None):
+def load_model(model_name, load_weights=True):
+    model_config_path = os.path.join('outputs', model_name, 'model_config.json')
+    weights_path = os.path.join('models_saved', model_name)
+
     with open(model_config_path, mode='r') as config_file:
         config_json = config_file.read()
 
@@ -44,7 +46,7 @@ def load_model(model_config_path, weights_path=None):
 
     data_augmentation = model.layers[0]
     base_model = model.layers[1]
-    if weights_path:
+    if load_weights:
         base_model.load_weights(weights_path)
 
     return base_model, model, data_augmentation
@@ -54,8 +56,8 @@ def get_callbacks():
     """ TensorBoard loggging """
     run_config.run_logs_dir = os.path.join('logs', f'bg{run_config.dataset_size}', run_config.model_name)
     os.makedirs(run_config.run_logs_dir, exist_ok=True)
-    # file_writer = tf.summary.create_file_writer(run_config.run_logs_dir + "/metrics")
-    # file_writer.set_as_default()
+    file_writer = tf.summary.create_file_writer(run_config.run_logs_dir + "/metrics")
+    file_writer.set_as_default()
 
     """ Callbacks """
     # lr_sched = LearningRateScheduler(util.lr_scheduler)
@@ -70,7 +72,8 @@ def get_callbacks():
 
     mse_logging = util.MSELogger(freq=5)
 
-    tensorboard_callback = TensorBoard(run_config.run_logs_dir, histogram_freq=1, )  # profile_batch='1100, 3100' # needs sudo
+    tensorboard_callback = TensorBoard(run_config.run_logs_dir, write_graph=False,
+                                       histogram_freq=1, profile_batch=0)  # profiling needs sudo
     # tf.debugging.experimental.enable_dump_debug_info(run_config.run_logs_dir, tensor_debug_mode="FULL_HEALTH", circular_buffer_size=-1)
     # tf.debugging.set_log_device_placement(True)
 

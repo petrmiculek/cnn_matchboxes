@@ -228,6 +228,13 @@ def full_prediction(base_model, class_names, file_labels, img_path, output_locat
     predictions = make_prediction(base_model, img, maxes_only, undecided_only)
     img = img[0]  # remove batch dimension
 
+    os.makedirs('preds', exist_ok=True)
+    # os.makedirs(os.path.join('preds', run_config.model_name), exist_ok=True)
+    preds_file_path = os.path.join('preds', img_path.split('/')[-1] + '.npy')
+
+    with open(preds_file_path, 'wb') as f:
+        np.save(f, predictions)
+
     # Model prediction is cropped, adjust image accordingly
     img, model_crop_delta = crop_to_prediction(img, predictions)
 
@@ -264,8 +271,8 @@ def full_prediction(base_model, class_names, file_labels, img_path, output_locat
 def full_prediction_all(base_model, val=True,
                         undecided_only=False, maxes_only=False,
                         output_location=None, show=True):
-    labels_dir = 'sirky' + '_val' * val
-    labels = load_labels_pandas(labels_dir + os.sep + 'labels.csv', use_full_path=False, keep_bg=False)
+    images_dir = 'sirky' + '_val' * val
+    labels = load_labels_pandas(images_dir + os.sep + 'labels.csv', use_full_path=False, keep_bg=False)
 
     if output_location:
         output_location = os.path.join(output_location, 'heatmaps')
@@ -277,7 +284,7 @@ def full_prediction_all(base_model, val=True,
         mse = full_prediction(base_model,
                               run_config.class_names,
                               file_labels,
-                              img_path=labels_dir + os.sep + file,
+                              img_path=images_dir + os.sep + file,
                               output_location=output_location,
                               show=show,
                               undecided_only=undecided_only,
