@@ -108,7 +108,7 @@ def run(model_builder, hparams):
         run_config.epochs_trained = 0
 
         if run_config.train:
-            epochs = 50
+            epochs = 75
             if hard_mining:
 
                 epochs_to_reshuffle = 10
@@ -224,11 +224,11 @@ if __name__ == '__main__':
     run_config.dataset_size = 1000
     run_config.train = True
     # train dim decided by model
-    run_config.dataset_dim = 64
+    run_config.dataset_dim = 128
     run_config.augment = True
     run_config.use_weights = False
     run_config.show = False
-    run_config.scale = 0.25
+    run_config.scale = 0.5
     run_config.center_crop_fraction = 0.5
 
     # model params
@@ -252,9 +252,9 @@ if __name__ == '__main__':
             metrics=[hp.Metric('mse')],
         )
 
-    m = models.dilated_32x_odd
+    m = models.dilated_64x_odd
     hparams = {
-        'base_width': 32,
+        'base_width': 16,
 
         'augmentation': run_config.augment,
         'ds_bg_samples': run_config.dataset_size,

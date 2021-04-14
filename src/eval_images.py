@@ -5,12 +5,11 @@ from math import floor, ceil, log10
 import cv2 as cv
 import numpy as np
 import pandas as pd
-import tensorflow as tf
 from scipy.spatial.distance import cdist
 
 import run_config
 from general import lru_cache
-from labels import load_labels_pandas
+from labels import load_labels, rescale_labels
 from logging_results import log_mean_square_error_csv
 from show_results import display_predictions
 
@@ -54,6 +53,9 @@ def make_prediction(base_model, img, maxes_only=False, undecided_only=False):
     :param undecided_only:
     :return:
     """
+    import tensorflow as tf
+    # ^ since `import tensorflow` starts libcudart, it needs not to be at module-level
+    # it makes a difference when a non-tf function from this module is imported in a non-tf environment
 
     predictions_raw = base_model.predict(tf.convert_to_tensor(img, dtype=tf.uint8))
     predictions = tf.squeeze(predictions_raw).numpy()
@@ -86,7 +88,7 @@ def crop_to_prediction(img, pred):
     return img[low:-high, low:-high], model_crop_delta
 
 
-@lru_cache
+@lru_cache(copy=True)
 def grid_like(x, y):
     grid = np.meshgrid(np.arange(x), np.arange(y))
     grid = np.vstack([grid])
@@ -94,7 +96,7 @@ def grid_like(x, y):
     return grid
 
 
-def rescale_file_labels_dict(dict_labels, orig_img_size, scale, model_crop_delta, center_crop_fraction):
+def rescale_labels_dict(dict_labels, orig_img_size, scale, model_crop_delta, center_crop_fraction):
     """Unused"""
     new = dict()
     for cat, labels in dict_labels.items():
@@ -115,22 +117,6 @@ def rescale_file_labels_dict(dict_labels, orig_img_size, scale, model_crop_delta
         new[cat] = new_l
 
     return new
-
-
-def rescale_file_labels_pandas(file_labels, orig_img_size, scale, model_crop_delta, center_crop_fraction):
-    # initial rescale
-    file_labels.x = (file_labels.x * scale).astype(np.int32)
-    file_labels.y = (file_labels.y * scale).astype(np.int32)
-
-    # center-crop
-    file_labels.x -= int(orig_img_size[0] * scale * (1 - center_crop_fraction) // 2)
-    file_labels.y -= int(orig_img_size[1] * scale * (1 - center_crop_fraction) // 2)
-
-    # model-crop
-    file_labels.x -= model_crop_delta // 2
-    file_labels.y -= model_crop_delta // 2
-
-    return file_labels
 
 
 def mean_square_error(predictions, img_path, file_labels, class_names, base_model):
@@ -247,8 +233,8 @@ def full_prediction(base_model, class_names, file_labels, img_path, output_locat
         plots_title = 'maxes'
     else:
         try:
-            file_labels = rescale_file_labels_pandas(file_labels, orig_size, run_config.scale, model_crop_delta,
-                                                     run_config.center_crop_fraction)
+            file_labels = rescale_labels(file_labels, run_config.scale, model_crop_delta,
+                                         run_config.center_crop_fraction)
 
             losses_sum, category_losses = mean_square_error(predictions, img_path, file_labels, class_names,
                                                             base_model)
@@ -272,7 +258,7 @@ def full_prediction_all(base_model, val=True,
                         undecided_only=False, maxes_only=False,
                         output_location=None, show=True):
     images_dir = 'sirky' + '_val' * val
-    labels = load_labels_pandas(images_dir + os.sep + 'labels.csv', use_full_path=False, keep_bg=False)
+    labels = load_labels(images_dir + os.sep + 'labels.csv', use_full_path=False, keep_bg=False)
 
     if output_location:
         output_location = os.path.join(output_location, 'heatmaps')

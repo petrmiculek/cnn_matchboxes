@@ -17,7 +17,7 @@ from scipy.spatial import Delaunay
 from scipy.spatial import cKDTree
 from scipy.spatial.distance import cdist
 
-from labels import load_labels_pandas
+from labels import load_labels
 
 
 def delaunay(points):
@@ -250,7 +250,7 @@ def consensus(arr):
 if __name__ == '__main__':
     """ Load points """
     input_folder = 'sirky_val'
-    labels = load_labels_pandas(f'{input_folder}/labels.csv', use_full_path=False, keep_bg=False)
+    labels = load_labels(f'{input_folder}/labels.csv', use_full_path=False, keep_bg=False)
 
     scale = 0.25
 
@@ -549,7 +549,7 @@ if __name__ == '__main__':
                 pts_top, pts_top_back, pts_top_front
 
 
-        def connect_closest_breaks():
+        def connect_closest_fails():
             #  discovered on 20201020_121235.jpg
             plt.scatter(*points_cv.T, marker='+')
             plt.scatter(*pts_top_front.T, marker='o')

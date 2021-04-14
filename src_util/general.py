@@ -3,7 +3,7 @@ from copy import deepcopy
 from time import time
 
 
-def lru_cache(maxsize=128, typed=False, copy=False):
+def lru_cache(maxsize=64, typed=False, copy=False):
     """Copying LRU cache - memoize results, return mutable copies
 
     Taken from:

@@ -7,7 +7,7 @@ import pandas as pd
 from general import lru_cache
 
 
-@lru_cache
+@lru_cache(copy=True)
 def load_labels_dict(path, use_full_path=True, keep_bg=True):
     """Load annotated points
 
@@ -40,8 +40,8 @@ def load_labels_dict(path, use_full_path=True, keep_bg=True):
     return labels
 
 
-@lru_cache
-def load_labels_pandas(path, use_full_path=True, keep_bg=True):
+@lru_cache(copy=True)
+def load_labels(path, use_full_path=True, keep_bg=True):
     csv = pd.read_csv(path,
                       header=None,
                       names=['category', 'x', 'y', 'image', 'img_x', 'img_y'],
@@ -49,9 +49,67 @@ def load_labels_pandas(path, use_full_path=True, keep_bg=True):
                              'image': str, 'img_x': np.int32, 'img_y': np.int32}
                       )
     if use_full_path:
-        csv['image'] = os.path.dirname(path) + os.sep + csv['image']
+        csv['image'] = os.path.join(os.path.dirname(path), csv['image'])
 
     if not keep_bg:
         csv = csv[csv.category != 'background']
 
     return csv
+
+
+def rescale_labels(labels, scale, model_crop_delta, center_crop_fraction):
+    """
+
+    Fractional crop
+    Scale
+    Model crop
+    + culling points outside cropped areas
+
+    :param labels: labels dataframe
+    :param scale:
+    :param model_crop_delta:
+    :param center_crop_fraction:
+    :return:
+    """
+    labels = labels.copy()
+
+    img_size = labels.iloc[0][['img_x', 'img_y']].to_numpy()  # assume same-sized images
+
+    center_crop = ((1 - center_crop_fraction) / 2 * img_size).astype(np.int)
+
+    # cull points outside center-cropped area
+    labels = labels[(center_crop[0] <= labels.x) &
+                    (center_crop[1] <= labels.y)]
+    labels = labels[(labels.x <= (img_size[0] - center_crop[0])) &
+                    (labels.y <= (img_size[1] - center_crop[1]))]
+
+    img_size -= center_crop
+
+    # center-crop
+    labels.x -= center_crop[0]
+    labels.y -= center_crop[1]
+
+    # initial rescale
+    labels.x = (labels.x * scale).astype(np.int)
+    labels.y = (labels.y * scale).astype(np.int)
+
+    img_size = (img_size * scale).astype(np.int)
+
+    # cull points outside model-cropped area
+    model_crop = model_crop_delta // 2
+
+    labels = labels[(model_crop <= labels.x) &
+                    (model_crop <= labels.y)]
+    labels = labels[(labels.x <= (img_size[0] - model_crop)) &
+                    (labels.y <= (img_size[1] - model_crop))]
+
+    # model-crop
+    labels.x -= model_crop
+    labels.y -= model_crop
+    # although the model_crop_delta is always odd, the floor division does
+
+    img_size -= model_crop
+
+    print(img_size)  # prediction should be just as big
+
+    return labels

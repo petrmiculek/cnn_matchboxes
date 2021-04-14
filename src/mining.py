@@ -23,9 +23,9 @@ def between_keypoints():
     # todo finish this sandbox
     import numpy as np
     import pandas as pd
-    from labels import load_labels_pandas
+    from labels import load_labels
 
-    labels = load_labels_pandas('sirky_val/labels.csv', False, True)
+    labels = load_labels('sirky_val/labels.csv', False, True)
 
     for img in labels.image.unique():
         print(img)
