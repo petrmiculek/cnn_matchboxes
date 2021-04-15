@@ -188,6 +188,7 @@ def evaluate_model(model, dataset, val=False, output_location=None, show=False, 
     try:
         accuracy = 100.0 * (1 - len(false_predictions) / len(predictions))
     except Exception:  # todo test
+        print('avoided')
         accuracy = 100.0 * (1 - len(false_predictions.numpy()) / len(predictions.numpy()))
 
     print('\tAccuracy: {0:0.3g}%'.format(accuracy))
@@ -309,7 +310,7 @@ def show_augmentation(data_augmentation, dataset):
     """
 
     """Convert dataset"""
-    # todo use predict_all_tf, with added training param?
+    # todo use predict_all_tf, with added training param
     imgs = [img
             for batch in list(dataset)
             for img in batch[0]]

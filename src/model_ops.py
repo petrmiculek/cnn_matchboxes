@@ -61,11 +61,11 @@ def get_callbacks():
 
     """ Callbacks """
     # lr_sched = LearningRateScheduler(util.lr_scheduler)
-    reduce_lr = ReduceLROnPlateau(monitor='accu', mode='max', factor=0.5, min_delta=1e-2,
-                                  patience=10, min_lr=5e-6, verbose=tf.compat.v1.logging.ERROR)
-    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_accu', patience=15, min_delta=1e-3, mode='max',
+    reduce_lr = ReduceLROnPlateau(monitor='pr_curve', mode='max', factor=0.5, min_delta=1e-2,
+                                  patience=5, min_lr=5e-6, verbose=tf.compat.v1.logging.ERROR)
+    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_pr_curve', patience=15, min_delta=1e-3, mode='max',
                                                       verbose=tf.compat.v1.logging.ERROR)  # avoid not available warning
-    # ^ No improvement on training data for 10 epochs -> Reduce LR,
+    # ^ No improvement on training data for 5 epochs -> Reduce LR
     # No improvement on validation data for 15 epochs -> Halt
 
     lr_logging = util.LearningRateLogger()

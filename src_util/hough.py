@@ -141,7 +141,7 @@ def get_cat_points(file_labels, cat=None, cv=False):
 def inverse_index(arr, index):
     mask = np.ones(len(arr), dtype=np.bool)
     mask[index] = 0
-    return arr[mask]  # copy?
+    return arr[mask]  # could use a copy
 
 
 def connect_points(canvas, pts1, pts2, c=200):
@@ -164,12 +164,18 @@ def closest_pairs_greedy(pts_from, pts_to, indices_only=False):
 
     greedy = choose the closest pair, remove the pair from the pool
     pairs are inherently disjoint
+
+
     """
+    assert pts_to.ndim == pts_from.ndim == 2
+    assert pts_to.shape[1] == pts_to.shape[1] == 2
+    assert len(pts_to) >= len(pts_from), "not enough points to connect to"
+
     dists = cdist(pts_from, pts_to)
     # assert len(dists.shape) == 2
     fill_value = np.max(dists) + 1
     if indices_only:
-        ret = np.zeros_like(pts_from[0])
+        ret = np.zeros((pts_from.shape[0]))
     else:
         ret = np.zeros_like(pts_from)
 
@@ -188,6 +194,12 @@ def closest_pairs_greedy(pts_from, pts_to, indices_only=False):
 
 
 def closest_pairs_in_order(pts_from, pts_to, indices_only=False):
+    """ Find closest point_from for each point_to"""
+
+    assert pts_to.ndim == pts_from.ndim == 2
+    assert pts_to.shape[1] == pts_to.shape[1] == 2
+    assert len(pts_to) >= len(pts_from), "not enough points to connect to"
+
     dists = cdist(pts_from, pts_to)
     fill_value = np.max(dists) + 1
     ret = []
@@ -201,7 +213,7 @@ def closest_pairs_in_order(pts_from, pts_to, indices_only=False):
 
         dists[:, idx] = fill_value
 
-    return ret
+    return np.array(ret)
 
 
 def count_points_on_line(points, line, dst_th=10, show=False):

@@ -1,9 +1,13 @@
+# stdlib
 import csv
 import os
 from collections import defaultdict
+
+# external
 import numpy as np
 import pandas as pd
 
+# local
 from general import lru_cache
 
 
@@ -20,7 +24,7 @@ def load_labels_dict(path, use_full_path=True, keep_bg=True):
     # dict of file_names, dict of categories, list of (x, y)
     labels = defaultdict(lambda: defaultdict(list))
 
-    with open(path) as f:  # os.curdir + os.sep + path + os.sep +
+    with open(path) as f:
         csv_data = csv.reader(f, delimiter=',')
         for line in csv_data:
             if len(line) == 0:

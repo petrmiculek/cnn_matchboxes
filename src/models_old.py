@@ -452,7 +452,6 @@ def conv_6layers(num_classes, first_conv=32):
     """
     November
     More layers and channels did not bring better accuracy.
-    Is there a bottleneck in the model somewhere?
 
     """
     init = tf.keras.initializers.he_normal()

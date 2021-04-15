@@ -190,8 +190,8 @@ def images_to_dataset(do_foreground=True, do_background=True, val=False, region_
             # generate more samples than needed, some might get filtered due to proximity
             samples = int(4 * per_image_samples)
 
-            # try normal distribution?
-            # scipy.stats.norm.fit(file_labels).rvs(samples).astype(np.intc)
+            # try normal distribution
+            # scipy.stats.norm.fit(file_labels).rvs(samples).astype(np.int)
 
             mins = np.min(file_labels_scaled, axis=0)
             maxs = np.max(file_labels_scaled, axis=0)

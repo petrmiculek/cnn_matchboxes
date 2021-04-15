@@ -87,6 +87,14 @@ def make_prediction(base_model, img, maxes_only=False, undecided_only=False):
 
 
 def crop_to_prediction(img, pred_shape):
+    """
+
+    returns a view, could mess up original image by being mutated later on
+
+    :param img: image to be cropped
+    :param pred_shape: 2d or 3d
+    :return:
+    """
     assert img.shape[0] - pred_shape[0] == img.shape[1] - pred_shape[1]
     model_crop_delta = img.shape[0] - pred_shape[0]
     low = floor(model_crop_delta / 2)
@@ -103,7 +111,7 @@ def grid_like(x, y):
     return grid
 
 
-def mean_square_error(predictions, img_path, file_labels, class_names, base_model):
+def mean_square_error_pixelwise(predictions, img_path, file_labels, class_names, base_model):
     """Calculate MSE metric for full-image prediction
 
     Metric is calculated per-pixel.
@@ -117,7 +125,7 @@ def mean_square_error(predictions, img_path, file_labels, class_names, base_mode
 
         Center crop fraction also makes it easier.
 
-    todo calculate MSE from prediction probability instead of argmax?
+    todo calculate MSE from prediction probability instead of argmax
 
     for all prediction-pixels:
         non-background: distance to closest keypoint of given class ^ 2
@@ -194,20 +202,21 @@ def full_prediction(base_model, class_names, file_labels, img_path, output_locat
 
     predictions = make_prediction(base_model, img, maxes_only, undecided_only)
 
+    # todo
     # temporary - save predictions
-    os.makedirs('preds', exist_ok=True)
-    preds_file_path = os.path.join('preds', img_path.split('/')[-1] + '.npy')
-
-    with open(preds_file_path, 'wb') as f:
-        # noinspection PyTypeChecker
-        np.save(f, predictions)
+    # os.makedirs('preds', exist_ok=True)
+    # preds_file_path = os.path.join('preds', img_path.split('/')[-1] + '.npy')
+    #
+    # with open(preds_file_path, 'wb') as f:
+    #     noinspection PyTypeChecker
+    #     np.save(f, predictions)
 
     # Model prediction is cropped, adjust image accordingly
     img, model_crop_delta = crop_to_prediction(img, predictions.shape)
 
     category_titles = class_names
 
-    losses_sum = -1
+    mse_total = -1
     if undecided_only:
         plots_title = 'undecided'
     elif maxes_only:
@@ -217,11 +226,11 @@ def full_prediction(base_model, class_names, file_labels, img_path, output_locat
             file_labels = rescale_labels(file_labels, run_config.scale, model_crop_delta,
                                          run_config.center_crop_fraction)
 
-            losses_sum, category_losses = mean_square_error(predictions, img_path, file_labels, class_names,
-                                                            base_model)
+            mse_total, mse_categories = mean_square_error_pixelwise(predictions, img_path, file_labels, class_names,
+                                                                    base_model)
 
-            category_titles = ['{}: 1e{:0.2g}'.format(cat, log10(loss + 1)) for cat, loss in category_losses.items()]
-            plots_title = str(losses_sum // 1e6) + 'M'
+            category_titles = ['{}: 1e{:0.2g}'.format(cat, log10(cat_mse + 1)) for cat, cat_mse in mse_categories.items()]
+            plots_title = '{}M'.format(mse_total // 1e6)
 
             show_mse_location(predictions, img, img_path, file_labels, class_names,
                               output_location=output_location, show=False)
@@ -233,7 +242,7 @@ def full_prediction(base_model, class_names, file_labels, img_path, output_locat
     display_predictions(predictions, img, img_path, category_titles, plots_title,
                         show=show, output_location=output_location, superimpose=True)
 
-    return losses_sum
+    return mse_total
 
 
 def full_prediction_all(base_model, val=True,
