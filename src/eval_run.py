@@ -52,7 +52,7 @@ if __name__ == '__main__':
     dataset_dir = f'/data/datasets/{config.dataset_dim}x_{int(100 * config.scale):03d}s_{config.dataset_size}bg'
 
     val_ds, _, _ = get_dataset(dataset_dir + '_val')
-    train_ds, config.class_names, _ = get_dataset(dataset_dir, use_weights=config.use_weights)
+    train_ds, config.class_names, _ = get_dataset(dataset_dir)
 
     if False:
         mse_pix_val, mse_val, count_mae_val = \

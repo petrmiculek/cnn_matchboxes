@@ -232,8 +232,6 @@ def full_prediction(base_model, file_labels, img_path, output_location=None,
         plots_title = 'maxes'
     else:
         try:
-            # file_labels = rescale_labels(file_labels, config.scale, model_crop_delta, config.center_crop_fraction)
-
             # pixel-wise
             pix_mse, mse_pix_categories = mean_square_error_pixelwise(predictions, img_path, file_labels)
 
@@ -242,22 +240,22 @@ def full_prediction(base_model, file_labels, img_path, output_location=None,
             # plots_title = '{:0.2g}M'.format(mse_pix_total / 1e6)
 
             # point-wise
-            point_mse, mse_categories, count_mae = mean_square_error_pointwise(predictions, file_labels)
+            point_mse, mse_categories, count_mae = mean_square_error_pointwise(predictions, file_labels, show=show)
 
             category_titles = ['{}: {:.1e}'.format(cat, cat_mse) for cat, cat_mse in
                                mse_categories.items()]
             plots_title = 'dist_mse: {:.1e}, count_mae: {:0.2g}'.format(point_mse, count_mae)
 
-            show_mse_pixelwise_location(predictions, img, img_path, file_labels, output_location=output_location,
-                                        show=False)
+            # show_mse_pixelwise_location(predictions, img, img_path, file_labels, output_location=output_location,
+            #                             show=False)
         except Exception as ex:
             plots_title = ''
             print(ex, file=sys.stderr)
 
     assert len(category_titles) >= 8, '{}, {}, {}'.format(len(category_titles), point_mse, pix_mse)
     # save_predictions_cv(predictions, img, img_path, output_location)
-    display_predictions(predictions, img, img_path, category_titles, plots_title,
-                        show=show, output_location=output_location, superimpose=True)
+    # display_predictions(predictions, img, img_path, category_titles, plots_title,
+    #                     show=show, output_location=output_location, superimpose=True)
 
     return pix_mse, point_mse, count_mae
 
@@ -289,11 +287,11 @@ def full_prediction_all(base_model, val=True,
 
     pix_mse = np.mean(pix_mse_list)
     point_mse = np.mean(point_mse_list)
-    count_mae = np.nanmean(count_mae_list)
+    count_mae = np.mean(count_mae_list) if len(count_mae_list) else 0
     return pix_mse, point_mse, count_mae
 
 
-def mean_square_error_pointwise(predictions, file_labels, show=False):
+def mean_square_error_pointwise(pred, file_labels, show=False):
     def mse_value(pts_gt, pts_pred):
         false_positive_penalty = 1e4
         false_negative_penalty = 1e4
@@ -313,9 +311,10 @@ def mean_square_error_pointwise(predictions, file_labels, show=False):
 
         return mse
 
-    predictions = predictions.copy()
+    img_file_name = file_labels.iloc[0].image
 
     prediction_threshold = 0.9
+    min_blob_size = 160 * config.scale ** 2
 
     mse_cat_dict = {}
     mse_cat_list = []
@@ -325,94 +324,87 @@ def mean_square_error_pointwise(predictions, file_labels, show=False):
     count_error_categories = []
 
     blob_sizes = []
-    # multiblobs = []
 
-    if True:
-        # Approach 2:
+    if show:
+        fig, axes = plt.subplots(3, 3, figsize=(12, 10))
 
-        # thresholding -> 0, 1
-        predictions[:, :, 1:] = (predictions[:, :, 1:] >= prediction_threshold).astype(np.float64)
-        prediction_argmax = np.argmax(predictions, axis=2)
-        blobs, num_blobs = skimage_label(prediction_argmax > 0, return_num=True, connectivity=2)
+    # thresholding -> 0, 1
+    pred[:, :, 1:] = (pred[:, :, 1:] >= prediction_threshold).astype(np.float64)
 
-        pts_pred_center = []
-        pts_pred_cat = []
+    prediction_argmax = np.argmax(pred, axis=2)
 
-        # get prediction points from pixel-blobs
-        for blob in range(1, num_blobs + 1):
-            blob_indices = np.argwhere(blobs == blob)
+    blobs, num_blobs = skimage_label(prediction_argmax > 0, return_num=True, connectivity=2)
 
-            # blobs may constitute of more categories - find majority category
-            cats, support = np.unique(prediction_argmax[blobs == blob], return_counts=True)
-            blob_sizes.append(len(blob_indices))
-            # if len(support) > 1:
-            #     multiblobs.append((cats, support))
+    pts_pred = []
+    pts_pred_categories = []
 
-            winning_category = cats[np.argmax(support)]
-            center = np.mean(blob_indices, axis=0).astype(np.int)
-            pts_pred_center.append(center)
-            pts_pred_cat.append(winning_category)
+    for blob in range(1, num_blobs + 1):
+        blob_indices = np.argwhere(blobs == blob)
+        if len(blob_indices) < min_blob_size:
+            continue
 
-        pts_pred_center = np.flip(pts_pred_center, axis=1)
-        pts_pred_cat = np.array(pts_pred_cat)
+        cats, support = np.unique(prediction_argmax[blobs == blob], return_counts=True)
+        blob_sizes.append(len(blob_indices))
 
-        # old_blobs_counts = []
-        for cat in range(1, predictions.shape[2]):
-            # old_blobs, old_num_blobs = skimage_label(predictions[:, :, cat], return_num=True, connectivity=2)
-            # old_blobs_counts.append(old_num_blobs)
+        center = np.mean(blob_indices, axis=0).astype(np.int)
+        winning_category = cats[np.argmax(support)]
+        pts_pred.append(center)
+        pts_pred_categories.append(winning_category)
 
-            pts_gt = file_labels[file_labels.category == config.class_names[cat]][['x', 'y']].to_numpy()
-            pts_pred = pts_pred_center[pts_pred_cat == cat]
+    pts_pred = np.flip(pts_pred, axis=1)  # yx -> xy
+    pts_pred_categories = np.array(pts_pred_categories)
 
-            # print('\t', config.class_names[cat], old_num_blobs == len(pts_pred),
-            #       old_num_blobs, 'x', len(pts_pred), '->', len(pts_gt))
+    for cat in range(pred.shape[2]):
+        if show:
+            ax = axes[cat // 3, cat % 3]
+            ax.set_title(config.class_names[cat])
+            ax.imshow(pred[:, :, cat])
 
-            mse = mse_value(pts_gt, pts_pred)
-            mse_cat_dict[config.class_names[cat]] = mse
-            mse_cat_list.append(mse)
-            count_error_categories.append(num_blobs - pts_gt.shape[0])
+        if cat == 0:
+            continue
 
-        # print(np.sum(old_blobs_counts), num_blobs, len(file_labels))
+        pts_gt_cat = file_labels[file_labels.category == config.class_names[cat]][['x', 'y']].to_numpy()
+        pts_pred_cat = pts_pred[pts_pred_categories == cat]
 
-    if False:
-        blob_sizes = []
-        for cat in range(1, predictions.shape[2]):  # 1..8
-            category = config.class_names[cat]
+        # if len(pts_pred_cat) != len(pts_gt_cat):
+        #     print('\t', config.class_names[cat], len(pts_pred_cat), '->', len(pts_gt_cat))
 
-            preds_cat = predictions[:, :, cat]
+        if show:
+            ax.scatter(pts_gt_cat[:, 0], pts_gt_cat[:, 1], marker='o')
+            ax.scatter(pts_pred_cat[:, 0], pts_pred_cat[:, 1], marker='x')
 
-            preds_cat[preds_cat < prediction_threshold] = 0
-            preds_cat[preds_cat >= prediction_threshold] = 1
+        mse = mse_value(pts_gt_cat, pts_pred_cat)
+        ax.set_title('{}: {:.2e}'.format(config.class_names[cat], mse))
 
-            blobs, num_blobs = skimage_label(preds_cat, return_num=True, connectivity=2)
+        mse_cat_dict[config.class_names[cat]] = mse
+        mse_cat_list.append(mse)
+        count_error_categories.append(pts_pred_cat.shape[0] - pts_gt_cat.shape[0])
 
-            pts_gt = file_labels[file_labels.category == category][['x', 'y']].to_numpy()
-
-            pts_pred = []
-            if num_blobs > 0:
-                for blob in range(1, num_blobs + 1):
-                    blob_indices = np.flip(np.argwhere(blobs == blob), axis=1)
-                    blob_sizes.append(len(blob_indices))
-                    center = blob_indices.mean(axis=0).astype(np.int)
-                    pts_pred.append(center)
-
-                pts_pred = np.vstack(pts_pred)
-
-            count_error_categories.append(num_blobs - pts_gt.shape[0])
-
-            mse = mse_value(pts_gt, pts_pred)
-
-            mse_cat_dict[category] = mse
-            mse_cat_list.append(mse)
-
-    mse_value = np.mean(mse_cat_list)
+    mse_total = np.mean(mse_cat_list)
     count_mae = np.mean(np.abs(count_error_categories))
 
     if show:
-        plt.hist(blob_sizes)
-        plt.show()
+        fig.legend(['prediction', 'ground-truth'])
+        axes[2, 2].scatter(pts_pred[:, 0], pts_pred[:, 1], marker='*', color='r')
+        axes[2, 2].invert_yaxis()
 
-    return mse_value, mse_cat_dict, count_mae
+        # original image
+        img_path = os.path.join('sirky', img_file_name)
+        if os.path.isfile(img_path):
+            img, _ = load_image(img_path, config.scale, config.center_crop_fraction)
+            img, _ = crop_to_prediction(img, pred.shape)
+            axes[2, 2].imshow(img)
+        else:
+            # print('not found:', img_path)
+            pass
+
+        fig.suptitle('{}: {:.2e}'.format(img_file_name, mse_total))
+        fig.tight_layout()
+        fig.show()
+
+    # print('blob size:', np.mean(blob_sizes).astype(np.int))
+
+    return mse_total, mse_cat_dict, count_mae
 
 
 def show_mse_pixelwise_location(predictions, img, img_path, file_labels, output_location=None, show=True):
