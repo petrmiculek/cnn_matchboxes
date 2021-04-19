@@ -1,9 +1,12 @@
+# stdlib
 import os
 
+# external
 import numpy as np
 import cv2 as cv
 from matplotlib import pyplot as plt
 
+# local
 from src_util.general import safestr
 
 
@@ -45,9 +48,10 @@ def display_predictions(predictions, img, img_path, class_titles, title='', show
     fig.suptitle('Heatmaps\n{}'.format(title))
     fig.subplots_adjust(right=0.85, left=0.05)
     for i in range(9):
-        axes[i // 3, i % 3].imshow(class_activations[i])
-        axes[i // 3, i % 3].axis('off')
-        axes[i // 3, i % 3].set_title(subplot_titles[i])
+        ax = axes[i // 3, i % 3]
+        ax.imshow(class_activations[i])
+        ax.axis('off')
+        ax.set_title(subplot_titles[i])
 
     fig.tight_layout()
     if show:

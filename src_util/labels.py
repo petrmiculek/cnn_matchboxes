@@ -77,7 +77,11 @@ def rescale_labels(labels, scale, model_crop_delta, center_crop_fraction):
     """
     labels = labels.copy()
 
-    img_size = labels.iloc[0][['img_x', 'img_y']].to_numpy()  # assume same-sized images
+    img_size = labels[['img_x', 'img_y']].to_numpy()
+    assert np.array_equal(np.min(img_size, axis=0), np.max(img_size, axis=0)), \
+        "Image sizes not equal"
+
+    img_size = img_size[0]
 
     center_crop = ((1 - center_crop_fraction) / 2 * img_size).astype(np.int)
 
@@ -87,7 +91,7 @@ def rescale_labels(labels, scale, model_crop_delta, center_crop_fraction):
     labels = labels[(labels.x <= (img_size[0] - center_crop[0])) &
                     (labels.y <= (img_size[1] - center_crop[1]))]
 
-    img_size -= center_crop
+    img_size -= 2 * center_crop
 
     # center-crop
     labels.x -= center_crop[0]
@@ -110,11 +114,10 @@ def rescale_labels(labels, scale, model_crop_delta, center_crop_fraction):
     # model-crop
     labels.x -= model_crop
     labels.y -= model_crop
-    # although the model_crop_delta is always odd, the floor division does
 
-    img_size -= model_crop
+    img_size -= model_crop_delta
 
-    print(img_size)  # prediction should be just as big
+    # print(img_size)  # this must match with prediction size -- checked, it does
 
     return labels
 

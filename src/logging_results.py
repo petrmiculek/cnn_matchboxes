@@ -14,17 +14,18 @@ def log_model_info(model, output_location=None):
     :return:
     """
     from tensorflow.keras.utils import plot_model
+    line_length = 100
 
     if len(model.layers) == 2:
         aug = model.layers[0]
         base_model = model.layers[1]
-        aug.summary(line_length=120)
+        aug.summary(line_length=line_length)
 
     else:
-        print('log_model_info: unexpected model structure')
+        print('W: log_model_info: unexpected model structure')
         base_model = model
 
-    base_model.summary(line_length=120)
+    base_model.summary(line_length=line_length)
 
     plot_model(base_model, os.path.join(output_location, base_model.name + "_architecture.png"), show_shapes=True)
 

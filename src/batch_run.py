@@ -1,6 +1,8 @@
+# stdlib
 import os
 import sys
 
+# external
 import tensorflow as tf
 from tensorboard.plugins.hparams import api as hp
 
@@ -9,10 +11,11 @@ sys.path.extend(['/home/petrmiculek/Code/light_matches',
                  '/home/petrmiculek/Code/light_matches/src',
                  '/home/petrmiculek/Code/light_matches/src_util'])
 
+# local
 from run import run, tf_init
 from models import *
 from models_old import *
-import run_config
+import config
 
 # noinspection DuplicatedCode
 if __name__ == '__main__':
@@ -133,39 +136,45 @@ if __name__ == '__main__':
         # run(dilated_32x_odd, model_kwargs=model_kwargs, dataset_size=1000, augment=aug, ds_dim=dim)
     """
 
-    run_config.dataset_size = 1000
-    run_config.train = True
+    config.dataset_size = 1000
+    config.train = True
     # train dim decided by model
-    run_config.dataset_dim = 64
-    run_config.augment = True
-    run_config.use_weights = False
-    run_config.show = False
-    run_config.scale = 0.25
-    run_config.center_crop_fraction = 0.5
+    config.dataset_dim = 128
+    config.augment = True
+    config.use_weights = False
+    config.show = False
+    config.scale = 0.25
+    config.center_crop_fraction = 0.5
 
     # model params
     hp_base_width = hp.HParam('base_width', hp.Discrete([16, 32]))
 
     # non-model params
+    hp_class_weights = hp.HParam('class_weights', hp.Discrete(['none', 'inv_freq', 'eff_num']))
     hp_ds_bg_samples = hp.HParam('ds_bg_samples', hp.Discrete([200, 700, 1000]))
-    hp_augmentation = hp.HParam('augmentation', hp.Discrete([False, True]))
+    hp_aug_level = hp.HParam('aug_level', hp.Discrete([0, 1, 2, 3]))
     hp_scale = hp.HParam('scale', hp.Discrete([0.25, 0.5]))
     hp_crop_fraction = hp.HParam('crop_fraction', hp.Discrete([0.5, 1.0]))
-    # METRIC_MSE = 'mse'
-
     with tf.summary.create_file_writer('logs').as_default():
         hp.hparams_config(
             hparams=[
+                hp_aug_level,
                 hp_base_width,
-                hp_ds_bg_samples,
-                hp_augmentation,
-                hp_scale,
+                hp_class_weights,
                 hp_crop_fraction,
+                hp_ds_bg_samples,
+                hp_scale,
             ],
             metrics=[
-                hp.Metric('mse'),
-                hp.Metric('mse_val'),
-                hp.Metric('pr_value_val')],
+                hp.Metric('pix_mse_train'),
+                hp.Metric('dist_mse_train'),
+                hp.Metric('count_mae_train'),
+
+                hp.Metric('pix_mse_val'),
+                hp.Metric('dist_mse_val'),
+                hp.Metric('count_mae_val'),
+
+                hp.Metric('pr_value_val')]
         )
     """
     for m in [parameterized(recipe_32x_odd),
@@ -177,10 +186,10 @@ if __name__ == '__main__':
             hparams = {
                 'base_width': width,
 
-                'augmentation': run_config.augment,
-                'ds_bg_samples': run_config.dataset_size,
-                'scale': run_config.scale,
-                'crop_fraction': run_config.center_crop_fraction,
+                'augmentation': config.augment,
+                'ds_bg_samples': config.dataset_size,
+                'scale': config.scale,
+                'crop_fraction': config.center_crop_fraction,
                 # 'tail_downscale': 2  # try if logging to tb fails
             }
             run(m, hparams)
@@ -194,13 +203,15 @@ if __name__ == '__main__':
             hparams = {
                 'base_width': width,
 
-                'augmentation': run_config.augment,
-                'ds_bg_samples': run_config.dataset_size,
-                'scale': run_config.scale,
-                'crop_fraction': run_config.center_crop_fraction,
+                'augmentation': config.augment,
+                'ds_bg_samples': config.dataset_size,
+                'scale': config.scale,
+                'crop_fraction': config.center_crop_fraction,
                 # 'tail_downscale': 2  # try if logging to tb fails
             }
             run(m, hparams)
+    """
+
     """
     for m in [parameterized(recipe_32x_odd)]:
         for width in hp_base_width.domain.values:
@@ -211,8 +222,8 @@ if __name__ == '__main__':
                         'augmentation': augmentation,
                         'scale': scale,
 
-                        'ds_bg_samples': run_config.dataset_size,
-                        'crop_fraction': run_config.center_crop_fraction,
+                        'ds_bg_samples': config.dataset_size,
+                        'crop_fraction': config.center_crop_fraction,
                         'non_cropping_conv': True,
                     }
                     run(m, hparams)
@@ -222,15 +233,15 @@ if __name__ == '__main__':
         for width in hp_base_width.domain.values:
             hparams = {
                 'base_width': width,
-                'augmentation': run_config.augment,
-                'scale': run_config.scale,
+                'augmentation': config.augment,
+                'scale': config.scale,
 
-                'ds_bg_samples': run_config.dataset_size,
-                'crop_fraction': run_config.center_crop_fraction,
+                'ds_bg_samples': config.dataset_size,
+                'crop_fraction': config.center_crop_fraction,
             }
             run(m, hparams)
 
-    run_config.dataset_dim = 128
+    config.dataset_dim = 128
 
     for m in [parameterized(recipe_64x_odd)]:
         for width in hp_base_width.domain.values:
@@ -241,8 +252,92 @@ if __name__ == '__main__':
                         'augmentation': augmentation,
                         'scale': scale,
 
-                        'ds_bg_samples': run_config.dataset_size,
-                        'crop_fraction': run_config.center_crop_fraction,
+                        'ds_bg_samples': config.dataset_size,
+                        'crop_fraction': config.center_crop_fraction,
                     }
                     run(m, hparams)
+    """
+    config.epochs = 50
 
+    config.dataset_dim = 64
+
+    models = [
+        parameterized(recipe_32x_odd),
+        # parameterized(recipe_32x_exp2),
+        # parameterized(recipe_32x_flat5),
+        # parameterized(recipe_32x_d1to5),
+              ]
+
+    # for crop_fraction in hp_crop_fraction.domain.values:
+    for model in models:
+        for scale in hp_scale.domain.values:
+            for width in hp_base_width.domain.values:
+                for aug_level in hp_aug_level.domain.values:
+                    config.scale = scale
+                    config.augment = aug_level
+                    hparams = {
+                        'base_width': width,
+                        'class_weights': 'none',
+                        'aug_level': aug_level,
+                        'ds_bg_samples': config.dataset_size,
+                        'scale': scale,
+                        'crop_fraction': config.center_crop_fraction,
+                        'non_cropping_conv': True,
+
+                    }
+                    run(model, hparams)
+    # models = [
+    #     # parameterized(recipe_32x_odd),
+    #     parameterized(recipe_32x_exp2),
+    #     parameterized(recipe_32x_flat5),
+    #     parameterized(recipe_32x_d1to5),
+    #           ]
+    #
+    # # for crop_fraction in hp_crop_fraction.domain.values:
+    # for model in models:
+    #     for aug_level in [1]:
+    #         for scale in hp_scale.domain.values:
+    #             for width in [16]:
+    #                 config.scale = scale
+    #                 config.augment = aug_level
+    #                 hparams = {
+    #                     'base_width': width,
+    #                     'class_weights': 'none',
+    #                     'aug_level': aug_level,
+    #                     'ds_bg_samples': config.dataset_size,
+    #                     'scale': scale,
+    #                     'crop_fraction': config.center_crop_fraction,
+    #                 }
+    #                 run(model, hparams)
+
+    config.dataset_dim = 128
+    config.scale = 0.5
+    models = [parameterized(recipe_64x_odd)]
+    for model in models:
+        for width in hp_base_width.domain.values:
+            for aug_level in hp_aug_level.domain.values:
+                hparams = {
+                    'base_width': width // 2,
+                    'class_weights': 'none',
+                    'aug_level': config.augment,
+                    'ds_bg_samples': config.dataset_size,
+                    'scale': config.scale,
+                    'crop_fraction': config.center_crop_fraction,
+                }
+                run(model, hparams)
+
+    """
+    # config.dataset_dim = 64
+    # m = parameterized(recipe_32x_odd)
+
+    hparams = {
+        'base_width': 16,
+
+        'augmentation': config.augment,
+        'ds_bg_samples': config.dataset_size,
+        'scale': config.scale,
+        'crop_fraction': config.center_crop_fraction,
+        'non_cropping_conv': True,
+
+    }
+    """

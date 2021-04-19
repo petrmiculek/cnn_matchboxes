@@ -1,15 +1,15 @@
+# stdlib
 import argparse
 import csv
-from collections import defaultdict
-import pathlib
 import os
 import sys
 
+# external
 import cv2 as cv
 import numpy as np
 
+# local
 from labels import load_labels_dict
-from random import randint
 
 """
 Show annotated images
@@ -24,10 +24,6 @@ Controls:
     Q:  quit
 """
 window_name = 'Q=Quit, A=Prev, D=Next'
-
-
-# def random_color():
-#     return randint(0, 255), randint(0, 255), randint(0, 255)
 
 
 def draw_cross(img, center_pos, line_length=20, color=(0, 0, 0), width=6, scale=1):

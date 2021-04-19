@@ -1,6 +1,8 @@
+# stdlib
 import os
 from math import ceil, floor, sqrt
 
+# external
 import PIL
 import numpy as np
 import seaborn as sns
@@ -8,7 +10,8 @@ import tensorflow as tf
 from matplotlib import pyplot as plt
 from sklearn.metrics import confusion_matrix as conf_mat, classification_report
 
-import run_config
+# local
+import config
 
 
 def confusion_matrix(labels, predictions, output_location=None, show=True, val=False, normalize=True):
@@ -29,18 +32,18 @@ def confusion_matrix(labels, predictions, output_location=None, show=True, val=F
     fig_cm = sns.heatmap(
         cm,
         annot=True,
-        xticklabels=run_config.class_names,
-        yticklabels=run_config.class_names,
+        xticklabels=config.class_names,
+        yticklabels=config.class_names,
         # fmt='0.2f',
         # vmin=0.0,
         # vmax=1.0
         **kwargs
     )
     fig_cm.set_title('Confusion Matrix\n{} {} [e{}]'
-                     .format(run_config.model_name, 'val' if val else 'train', run_config.epochs_trained))
-    fig_cm.set_xlabel("Predicted")
-    fig_cm.set_ylabel("True")
-    fig_cm.axis("on")
+                     .format(config.model_name, 'val' if val else 'train', config.epochs_trained))
+    fig_cm.set_xlabel('Predicted')
+    fig_cm.set_ylabel('True')
+    fig_cm.axis('on')
     fig_cm.figure.tight_layout(pad=0.5)
 
     if show:
@@ -55,9 +58,9 @@ def confusion_matrix(labels, predictions, output_location=None, show=True, val=F
 
 def misclassified_samples(imgs, labels, class_names, predictions,
                           false_pred, output_location=None, show=True):
-    """Show misclassified regions
+    """Show misclassified samples
 
-    # todo alternative version with grid-like output
+    unused
     """
 
     if len(false_pred) > 500:
@@ -187,9 +190,11 @@ def evaluate_model(model, dataset, val=False, output_location=None, show=False, 
     print('Validation:' if val else 'Training:')
     try:
         accuracy = 100.0 * (1 - len(false_predictions) / len(predictions))
-    except Exception:  # todo test
-        print('avoided')
-        accuracy = 100.0 * (1 - len(false_predictions.numpy()) / len(predictions.numpy()))
+    except TypeError as err:
+        # false predictions is a scalar
+        print(err)
+        print(f'{false_predictions=}')
+        accuracy = 100.0
 
     print('\tAccuracy: {0:0.3g}%'.format(accuracy))
     print(classification_report(labels, predictions))
@@ -227,10 +232,10 @@ def show_layer_activations(model, data_augmentation, ds, show=True, output_locat
     # no augmentation, only crop
     batch_img0 = data_augmentation(batch_img0, training=False)
 
-    print('GT   =', run_config.class_names[int(labels[idx].numpy())])
+    print('GT   =', config.class_names[int(labels[idx].numpy())])
     all_layer_activations = model_all_outputs(batch_img0, training=False)
     pred = all_layer_activations[-1].numpy()
-    predicted_category = run_config.class_names[np.argmax(pred)]
+    predicted_category = config.class_names[np.argmax(pred)]
     print('pred =', pred.shape, predicted_category)
 
     # I could test for region not being background here
@@ -283,7 +288,7 @@ def show_layer_activations(model, data_augmentation, ds, show=True, output_locat
                 display_grid[col * size: (col + 1) * size,
                              row * size: (row + 1) * size] = channel_image
 
-        scale = 1. / size
+        scale = 1.0 / size
         fig = plt.figure(figsize=(scale * display_grid.shape[1],
                                   scale * display_grid.shape[0]))
         plt.title(layer_name)

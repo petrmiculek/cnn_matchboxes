@@ -1,36 +1,60 @@
-import tensorflow as tf
+# stdlib
+import os
 import pathlib
 import glob
-import os
+
+# external
+import tensorflow as tf
 import numpy as np
+from sklearn.utils.class_weight import compute_class_weight
 
 
-def get_class_weights(class_counts_train):
-    """
+def weights_sklearn(class_counts):
+    fake_ds = [np.repeat(i, cc) for i, cc in enumerate(class_counts)]
+    fake_ds = np.hstack(fake_ds)
+    return compute_class_weight('balanced',
+                                classes=np.unique(fake_ds),
+                                y=fake_ds)
 
-    :param class_counts_train:
-    :return:
-    """
-    class_counts_train = np.array(class_counts_train)
-    num_classes = len(class_counts_train)
-    class_counts_sum = np.sum(class_counts_train)
-    class_weights = class_counts_sum / (num_classes * class_counts_train)
+
+def weights_inverse_freq(class_counts):
+    """Weigh classes by their inverse frequency"""
+    class_counts = np.array(class_counts)
+    class_weights = np.sum(class_counts) / (len(class_counts) * class_counts)
     return dict(enumerate(class_weights))
+
+
+def weights_effective_number(class_counts):
+    """Weight classes by effective number of samples
+
+    weights are less aggresive than inverse frequency
+
+    Class-Balanced Loss Based on Effective Number of Samples
+    https://openaccess.thecvf.com/content_CVPR_2019/papers/Cui_Class-Balanced_Loss_Based_on_Effective_Number_of_Samples_CVPR_2019_paper.pdf
+    """
+    class_counts = np.array(class_counts)
+
+    beta = (class_counts - 1) / class_counts
+    effective_number = 1.0 - np.power(beta, class_counts)
+    weights = (1 - beta) / effective_number
+    weights = weights / np.sum(weights) * len(class_counts)
+
+    return dict(enumerate(weights))
 
 
 # def profile(x):
 #     return x
 
 
-def get_dataset(dataset_dir, batch_size=64, use_weights=False):
+def get_dataset(dataset_dir, batch_size=64, weights=None):
     """
     Get dataset, class names and class weights
 
     Inspired by https://www.tensorflow.org/tutorials/load_data/images
 
-    :param use_weights:
     :param dataset_dir:
     :param batch_size:
+    :param weights:
     :return:
     """
     assert os.path.isdir(dataset_dir)
@@ -59,7 +83,7 @@ def get_dataset(dataset_dir, batch_size=64, use_weights=False):
 
     def configure_for_performance(ds):
         ds = ds.cache()
-        ds = ds.shuffle(buffer_size=1024)  # reshuffle_each_iteration=True
+        ds = ds.shuffle(buffer_size=512)  # reshuffle_each_iteration=True
         ds = ds.batch(batch_size)  # drop_remainder=True
         ds = ds.prefetch(buffer_size=autotune)
         return ds
@@ -75,8 +99,10 @@ def get_dataset(dataset_dir, batch_size=64, use_weights=False):
     """ Load images + labels, configure """
     dataset = dataset.map(process_path, num_parallel_calls=autotune)
 
-    if use_weights:
-        class_weights = get_class_weights(class_counts)  # unused for validation dataset
+    if weights == 'eff_num':
+        class_weights = weights_effective_number(class_counts)
+    elif weights == 'inv_freq':
+        class_weights = weights_inverse_freq(class_counts)
     else:
         class_weights = dict(zip(range(0, len(class_names)), np.ones(len(class_names))))
 

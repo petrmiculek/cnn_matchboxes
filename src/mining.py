@@ -1,4 +1,10 @@
+# stdlib
+# -
+
+# external
 import tensorflow as tf
+
+# local
 from eval_samples import predict_all_tf
 
 

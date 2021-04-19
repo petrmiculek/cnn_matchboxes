@@ -1,12 +1,16 @@
+# stdlib
 import os
 import glob
 import shutil
 from math import log10
 
+# external
+import numpy as np
 import tensorflow as tf
 import tensorflow_addons as tfa
 import tensorflow.keras.backend as K
 
+# local
 from eval_images import full_prediction_all
 
 """
@@ -28,13 +32,6 @@ def get_checkpoint_path(path='/tmp/model_checkpoints'):
 
 def pred_reshape(y_pred):
     return tf.reshape(y_pred, [tf.shape(y_pred)[0], tf.shape(y_pred)[3]])
-
-
-class Scce(tf.losses.SparseCategoricalCrossentropy):
-    # todo unused
-    def call(self, y_true, y_pred):
-        # tf.print(tf.shape(y_true), tf.shape(y_pred))
-        return super(Scce, self).call(y_true, y_pred)
 
 
 class Accu(tf.metrics.SparseCategoricalAccuracy):
@@ -107,15 +104,6 @@ class AUC(tf.keras.metrics.AUC):
         return super(AUC, self).update_state(y_true, y_pred_binary, sample_weight)
 
 
-# # not supported in eager :/
-# class mAP(tf.compat.v1.metrics.average_precision_at_k):
-#     def update_state(self, y_true, y_pred, sample_weight=None):
-#         y_pred_reshaped = pred_reshape(y_pred)
-#         y_pred_binary = tf.where(tf.argmax(y_pred_reshaped, axis=1) > 0, 1, 0)
-#
-#         return super(mAP, self).update_state(y_true, y_pred_binary, sample_weight)
-
-
 class MSELogger(tf.keras.callbacks.Callback):
     def __init__(self, freq=1):
         super().__init__()
@@ -126,16 +114,20 @@ class MSELogger(tf.keras.callbacks.Callback):
         if epoch > 0 and epoch % self.freq == 0:
             base_model = self.model.layers[1]
 
-            # validation data
-            mse_val = full_prediction_all(base_model, val=True, output_location=None, show=False)
+            pix_mse_val, dist_mse_val, count_mae_val = full_prediction_all(base_model, val=True, output_location=None, show=False)
+            pix_mse_train, dist_mse_train, count_mae_train = full_prediction_all(base_model, val=False, output_location=None, show=False)
 
-            print(f'avg_mse_val: 1e{log10(mse_val + 1):0.2g}')
-            tf.summary.scalar('avg_mse_val', mse_val, step=epoch)
+            print('dist_mse:', exp_form(dist_mse_train), exp_form(dist_mse_val))
+            print('count_mae: {:0.2g} {:0.2g}'.format(count_mae_train, count_mae_val))
 
-            # training data
-            mse_train = full_prediction_all(base_model, val=False, output_location=None, show=False)
-            print(f'avg_mse_train: 1e{log10(mse_train + 1):0.2g}')
-            tf.summary.scalar('avg_mse', mse_train, step=epoch)
+
+            tf.summary.scalar('pix_mse_train', pix_mse_train, step=epoch)
+            tf.summary.scalar('dist_mse_train', dist_mse_train, step=epoch)
+            tf.summary.scalar('count_mae_train', count_mae_train, step=epoch)
+
+            tf.summary.scalar('pix_mse_val', pix_mse_val, step=epoch)
+            tf.summary.scalar('dist_mse_val', dist_mse_val, step=epoch)
+            tf.summary.scalar('count_mae_val', count_mae_val, step=epoch)
 
 
 class LearningRateLogger(tf.keras.callbacks.Callback):
@@ -228,3 +220,12 @@ def conv_dim_calc(w, k, d=1, p=0, s=1):
     :return: output size
     """
     return (w - (1 + (k - 1) * d) + 2 * p) // s + 1
+
+
+def exp_form(val):
+    if np.isnan(val):
+        return str(val)
+    if val < 1:
+        return '0'
+    # return '{:.2e}'.format(val)
+    return '1e{:0.3g}'.format(log10(val))

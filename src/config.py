@@ -7,7 +7,7 @@ import os
 
 train = None
 augment = None
-use_weights = None
+class_weights = None
 
 ## Dataset
 
@@ -21,7 +21,7 @@ train_dim = None  # resolution for training
 class_names = None
 
 # Training flags
-
+epochs = 20
 
 # Model versions
 # base_model = None

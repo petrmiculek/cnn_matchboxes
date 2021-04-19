@@ -1,13 +1,17 @@
+# stdlib
 import os
+
+# external
 import tensorflow as tf
 
 from tensorflow.keras.callbacks import \
     TensorBoard, ReduceLROnPlateau, \
     LearningRateScheduler, ModelCheckpoint
 
+# local
 import util
 import models
-import run_config
+import config
 
 
 def compile_model(model):
@@ -16,19 +20,15 @@ def compile_model(model):
     accu = util.Accu(name='accu')  # ~= SparseCategoricalAccuracy
     prec = util.Precision(name='prec')
     recall = util.Recall(name='recall')
-    pr_curve = util.AUC(name='pr_curve', curve='PR')
-    # f1 = util.F1(num_classes=8)  # todo maybe 2 classes
-    # , average='micro'
-    # todo parametrize ^ based on model's last layer
+    pr_value = util.AUC(name='pr_value', curve='PR')
 
     model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=run_config.learning_rate),
+        optimizer=tf.keras.optimizers.Adam(learning_rate=config.learning_rate),
         loss=scce_loss,
         metrics=[accu,
                  prec,
                  recall,
-                 pr_curve,
-                 # f1,
+                 pr_value,
                  ])
 
 
@@ -54,16 +54,16 @@ def load_model(model_name, load_weights=True):
 
 def get_callbacks():
     """ TensorBoard loggging """
-    run_config.run_logs_dir = os.path.join('logs', f'bg{run_config.dataset_size}', run_config.model_name)
-    os.makedirs(run_config.run_logs_dir, exist_ok=True)
-    file_writer = tf.summary.create_file_writer(run_config.run_logs_dir + "/metrics")
+    config.run_logs_dir = os.path.join('logs', f'bg{config.dataset_size}', config.model_name)
+    os.makedirs(config.run_logs_dir, exist_ok=True)
+    file_writer = tf.summary.create_file_writer(config.run_logs_dir + "/metrics")
     file_writer.set_as_default()
 
     """ Callbacks """
-    # lr_sched = LearningRateScheduler(util.lr_scheduler)
-    reduce_lr = ReduceLROnPlateau(monitor='pr_curve', mode='max', factor=0.5, min_delta=1e-2,
+    # lr_sched = LearningRateScheduler(util.lr_scheduler)  # unused
+    reduce_lr = ReduceLROnPlateau(monitor='pr_value', mode='max', factor=0.5, min_delta=1e-2,
                                   patience=5, min_lr=5e-6, verbose=tf.compat.v1.logging.ERROR)
-    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_pr_curve', patience=15, min_delta=1e-3, mode='max',
+    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_pr_value', patience=15, min_delta=1e-3, mode='max',
                                                       verbose=tf.compat.v1.logging.ERROR)  # avoid not available warning
     # ^ No improvement on training data for 5 epochs -> Reduce LR
     # No improvement on validation data for 15 epochs -> Halt
@@ -72,15 +72,14 @@ def get_callbacks():
 
     mse_logging = util.MSELogger(freq=5)
 
-    tensorboard_callback = TensorBoard(run_config.run_logs_dir, write_graph=False,
+    tensorboard_callback = TensorBoard(config.run_logs_dir, write_graph=False,
                                        histogram_freq=1, profile_batch=0)  # profiling needs sudo
-    # tf.debugging.experimental.enable_dump_debug_info(run_config.run_logs_dir, tensor_debug_mode="FULL_HEALTH", circular_buffer_size=-1)
+    # tf.debugging.experimental.enable_dump_debug_info(config.run_logs_dir,
+    #                                                  tensor_debug_mode="FULL_HEALTH", circular_buffer_size=-1)
     # tf.debugging.set_log_device_placement(True)
 
-    # hparam_callback = hp.KerasCallback(logdir, hparams)  # todo check out
-
     model_checkpoint_callback = ModelCheckpoint(
-        filepath=run_config.checkpoint_path,
+        filepath=config.checkpoint_path,
         save_weights_only=True,
         monitor='val_accu',
         mode='max',
@@ -99,11 +98,11 @@ def get_callbacks():
 
 
 def build_new_model(model_factory, hparams, name_suffix=''):
-    base_model, run_config.train_dim = model_factory(len(run_config.class_names),
-                                                     hparams=hparams, name_suffix=name_suffix)
-    aug_model = models.augmentation(aug=run_config.augment, crop_to=run_config.train_dim, ds_dim=run_config.dataset_dim)
-    run_config.model_name = base_model.name + '_full'
-    model = tf.keras.Sequential([aug_model, base_model], name=run_config.model_name)
+    base_model, config.train_dim = model_factory(len(config.class_names),
+                                                 hparams=hparams, name_suffix=name_suffix)
+    aug_model = models.augmentation(aug_level=hparams['aug_level'], crop_to=config.train_dim, ds_dim=config.dataset_dim)
+    config.model_name = base_model.name + '_full'
+    model = tf.keras.Sequential([aug_model, base_model], name=config.model_name)
     compile_model(model)
 
     return base_model, model, aug_model

@@ -1,3 +1,4 @@
+# stdlib
 from functools import wraps, lru_cache as lru_cache_orig
 from copy import deepcopy
 from time import time
@@ -29,7 +30,9 @@ def lru_cache(maxsize=64, typed=False, copy=False):
 
 
 def timing(f):
-    """Time a function execution - as a decorator or timing(foo)(args)
+    """Time a function execution
+
+    Use as a @timing decorator or timing(foo)(args)
 
     Taken from
     https://stackoverflow.com/questions/1622943/timeit-versus-timing-decorator
@@ -43,7 +46,9 @@ def timing(f):
         start = time()
         result = f(*args, **kwargs)
         end = time()
-        print(f'func:{f.__name__!r} args:[{args!r}, {kwargs!r}] took: {end - start:2.4f} sec')
+        print(f'func:{f.__name__!r} ', end='')
+        # print(f'args:[{args!r}, {kwargs!r}] :', end='')
+        print(f'{end - start:2.4f} sec')
         return result
 
     return wrap

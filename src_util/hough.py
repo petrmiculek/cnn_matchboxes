@@ -1,6 +1,8 @@
+# stdlib
 import os
 from collections.abc import Iterable
 
+# external
 import cv2 as cv
 import numpy as np
 import pandas as pd
@@ -17,6 +19,7 @@ from scipy.spatial import Delaunay
 from scipy.spatial import cKDTree
 from scipy.spatial.distance import cdist
 
+# local
 from labels import load_labels
 
 

@@ -1,15 +1,18 @@
+# stdlib
 import argparse
 import csv
 import os
 import random
 import sys
 
+# external
 import cv2 as cv
 import numpy as np
 import pandas as pd
 import scipy
 from scipy.spatial.distance import cdist
 
+# local
 from src_util.labels import load_labels_dict
 
 """

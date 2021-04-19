@@ -1,36 +1,40 @@
-import os
-
+# external
 import tensorflow as tf
 from tensorflow.keras.layers import \
     add, Conv2D, BatchNormalization, Softmax, \
-    Input, MaxPool2D, Cropping2D, Concatenate, \
-    AvgPool2D, ZeroPadding2D, Dense, Flatten
+    Input, MaxPool2D, Cropping2D, Concatenate
 from tensorflow.keras.layers.experimental.preprocessing import \
-    CenterCrop, RandomFlip, RandomRotation, Rescaling
+    CenterCrop, RandomFlip, RandomRotation
 
-import run_config
+# local
+import config
 import util
 
 
-def augmentation(aug=True, crop_to=64, ds_dim=64):
+def augmentation(aug_level=1, crop_to=64, ds_dim=64):
     aug_model = tf.keras.Sequential(name='augmentation')
-    aug_model.add(Input(shape=(run_config.dataset_dim, run_config.dataset_dim, 3)))
+    aug_model.add(Input(shape=(config.dataset_dim, config.dataset_dim, 3)))
 
-    if aug:
+    hue = [0, 0.1, 0.2, 0.4]
+    contrast = [(1.0, 1.0), (0.75, 1.25), (0.5, 1.5), (0.25, 2.0)]
+    brightness = [0.0, 0.1, 0.3, 0.6]
+    saturation = [(1.0, 1.0), (0.75, 1.25), (0.5, 1.5), (0.1, 1.5)]
+    rotation = 1 / 16  # =rot22.5°
+
+    if aug_level > 0:
         aug_model.add(RandomFlip("horizontal"))
-        aug_model.add(RandomRotation(1 / 16))  # =rot22.5°
-        aug_model.add(util.RandomColorDistortion(brightness_delta=0.3,
-                                                 contrast_range=(0.25, 1.25),
-                                                 hue_delta=0.1,
-                                                 saturation_range=(0.75, 1.25)))
-
+        aug_model.add(RandomRotation(rotation))
+        aug_model.add(util.RandomColorDistortion(brightness_delta=brightness[aug_level],
+                                                 contrast_range=contrast[aug_level],
+                                                 hue_delta=hue[aug_level],
+                                                 saturation_range=saturation[aug_level]))
     assert ds_dim >= crop_to, \
         'Dataset dim smaller ({}) smaller than target dim ({})'.format(ds_dim, crop_to)
 
     if ds_dim != crop_to:
         aug_model.add(CenterCrop(crop_to, crop_to))
 
-    if not aug and crop_to == ds_dim:
+    if aug_level == 0 and crop_to == ds_dim:
         # no other layers, model cannot be empty
         # base Layer class == identity layer
         aug_model.add(tf.keras.layers.Layer(name='identity'))
@@ -79,7 +83,7 @@ def dilated_64x_odd(num_classes=8, hparams={}, name_suffix=''):
     x = Softmax()(x)
 
     model = tf.keras.Model(inputs=input_layer, outputs=x,
-                           name='dilated_64x_odd_' + name_suffix)
+                           name='64x_odd_' + name_suffix)
     return model, 64
 
 
@@ -126,7 +130,7 @@ def dilated_32x_odd(num_classes=8, hparams={}, name_suffix=''):
     x = Softmax()(x)
 
     model = tf.keras.Model(inputs=input_layer, outputs=x,
-                           name='dilated_32x_odd_' + name_suffix)
+                           name='32x_odd_' + name_suffix)
     return model, 32
 
 
@@ -140,7 +144,7 @@ def parameterized(recipe=None):
 
     kernels, dilations, widths = recipe()
     input_dim = recipe_input_dim(kernels, dilations)
-    param_string = 'd' + '-'.join((str(d) for d in dilations))
+    param_string = '-'.join((str(d) for d in dilations))
 
     def model_parameterized(num_classes=8, hparams={}, name_suffix=''):
         base_width = hparams['base_width'] if 'base_width' in hparams else 16
@@ -162,7 +166,7 @@ def parameterized(recipe=None):
         x = Conv2D(num_classes, 1, kernel_initializer=he_norm, activation=None)(x)
         x = Softmax()(x)
 
-        name = '{}_{}_{}'.format(input_dim, param_string, name_suffix)
+        name = '{}x_d{}_{}'.format(input_dim, param_string, name_suffix)
 
         model = tf.keras.Model(inputs=input_layer, outputs=x,
                                name=name)
@@ -178,8 +182,7 @@ def recipe_input_dim(kernels, dilations):
         dim -= util.conv_dim_calc(w=0, k=k, d=d)
 
     if not (dim & (dim - 1) == 0 and dim > 1):
-        # OK for model 32x_odd
-        print("model recipe does not result in a power of 2 input size")
+        print("W: model recipe does not result in a power of 2 input size")
 
     return dim
 
@@ -249,16 +252,6 @@ def recipe_32x_exp2():
     return kernels, dilations, widths
 
 
-def recipe_sandbox():
-    dilations = [1, 2, 3, 4, 5]
-    kernels = [3] * len(dilations)
-    dim = 32
-    print(dim)
-    for k, d in zip(kernels, dilations):
-        dim += util.conv_dim_calc(w=0, k=k, d=d)
-        print(dim)
-
-
 def recipe_32x_d7531():
     kernels = [3, 3, 3, 2, 1]
     dilations = [7, 5, 3, 1, 1]
@@ -294,3 +287,13 @@ def recipe_32x_odd():
     widths = [4, 4, 8, 8, 8]
 
     return kernels, dilations, widths
+
+
+def recipe_sandbox():
+    dilations = [1, 2, 3, 4, 5]
+    kernels = [3] * len(dilations)
+    dim = 32
+    print(dim)
+    for k, d in zip(kernels, dilations):
+        dim += util.conv_dim_calc(w=0, k=k, d=d)
+        print(dim)
