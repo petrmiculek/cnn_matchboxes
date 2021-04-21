@@ -14,8 +14,8 @@ from skimage.measure import label as skimage_label
 # local
 import config
 from general import lru_cache
-from labels import load_labels, rescale_labels
-from logging_results import log_mean_square_error_csv
+from labels import load_labels, resize_labels
+from logs import log_mean_square_error_csv
 from show_results import display_predictions
 from src_util.general import timing
 
@@ -231,7 +231,8 @@ def full_prediction(base_model, file_labels, img_path, output_location=None,
     elif maxes_only:
         plots_title = 'maxes'
     else:
-        try:
+        # try:
+        if True:
             # pixel-wise
             pix_mse, mse_pix_categories = mean_square_error_pixelwise(predictions, img_path, file_labels)
 
@@ -248,14 +249,14 @@ def full_prediction(base_model, file_labels, img_path, output_location=None,
 
             # show_mse_pixelwise_location(predictions, img, img_path, file_labels, output_location=output_location,
             #                             show=False)
-        except Exception as ex:
-            plots_title = ''
-            print(ex, file=sys.stderr)
+        # except Exception as ex:
+        #     plots_title = ''
+        #     print(ex, file=sys.stderr)
 
     assert len(category_titles) >= 8, '{}, {}, {}'.format(len(category_titles), point_mse, pix_mse)
     # save_predictions_cv(predictions, img, img_path, output_location)
-    # display_predictions(predictions, img, img_path, category_titles, plots_title,
-    #                     show=show, output_location=output_location, superimpose=True)
+    display_predictions(predictions, img, img_path, category_titles, plots_title,
+                        show=show, output_location=output_location, superimpose=True)
 
     return pix_mse, point_mse, count_mae
 
@@ -265,7 +266,7 @@ def full_prediction_all(base_model, val=True,
                         output_location=None, show=True):
     images_dir = 'sirky' + '_val' * val
     labels = load_labels(images_dir + os.sep + 'labels.csv', use_full_path=False, keep_bg=False)
-    labels = rescale_labels(labels, config.scale, config.train_dim - 1, config.center_crop_fraction)
+    labels = resize_labels(labels, config.scale, config.train_dim - 1, config.center_crop_fraction)
 
     if output_location:
         output_location = os.path.join(output_location, 'heatmaps')
@@ -287,57 +288,68 @@ def full_prediction_all(base_model, val=True,
 
     pix_mse = np.mean(pix_mse_list)
     point_mse = np.mean(point_mse_list)
-    count_mae = np.mean(count_mae_list) if len(count_mae_list) else 0
+    count_mae = np.mean(count_mae_list) if len(count_mae_list) > 0 else 0
     return pix_mse, point_mse, count_mae
 
 
-def mean_square_error_pointwise(pred, file_labels, show=False):
+def mean_square_error_pointwise(predictions, file_labels, show=False):
     def mse_value(pts_gt, pts_pred):
         false_positive_penalty = 1e4
         false_negative_penalty = 1e4
 
         if len(pts_gt) == len(pts_pred) == 0:
-            mse = 0.0
+            mse_val = 0.0
         elif len(pts_gt) == 0 and len(pts_pred) > 0:
             # no ground-truth
-            mse = len(pts_pred) * false_positive_penalty
+            mse_val = len(pts_pred) * false_positive_penalty
         elif len(pts_gt) > 0 and len(pts_pred) == 0:
             # no prediction
-            mse = len(pts_gt) * false_negative_penalty
+            mse_val = len(pts_gt) * false_negative_penalty
         else:
             dists = cdist(pts_gt, pts_pred)
             preds_errors = np.min(dists, axis=0)
-            mse = np.mean(np.square(preds_errors)) / config.scale
+            mse_val = np.mean(np.square(preds_errors)) / config.scale
 
-        return mse
+            # false-negative penalty
+            mse_val += np.max([0, len(pts_gt) - len(pts_pred)]) * false_negative_penalty
 
-    img_file_name = file_labels.iloc[0].image
+        return mse_val
+
+    # show = False
+
 
     prediction_threshold = 0.9
     min_blob_size = 160 * config.scale ** 2
 
-    mse_cat_dict = {}
+    img_file_name = file_labels.iloc[0].image
+
+    # distance mse mean calculation
     mse_cat_list = []
 
-    mse_cat_dict['background'] = 0.0
+    # per-category distance mse for plotting
+    mse_cat_dict = {'background': 0.0}
 
+    # keypoint counting mae
     count_error_categories = []
 
+    # for development purposes only
     blob_sizes = []
 
     if show:
         fig, axes = plt.subplots(3, 3, figsize=(12, 10))
 
     # thresholding -> 0, 1
-    pred[:, :, 1:] = (pred[:, :, 1:] >= prediction_threshold).astype(np.float64)
+    predictions[:, :, 1:] = (predictions[:, :, 1:] >= prediction_threshold).astype(np.float64)
 
-    prediction_argmax = np.argmax(pred, axis=2)
+    prediction_argmax = np.argmax(predictions, axis=2)
 
+    # find blobs in any non-background prediction pixels (ignoring keypoint category)
     blobs, num_blobs = skimage_label(prediction_argmax > 0, return_num=True, connectivity=2)
 
     pts_pred = []
     pts_pred_categories = []
 
+    # create a keypoint from blob pixels
     for blob in range(1, num_blobs + 1):
         blob_indices = np.argwhere(blobs == blob)
         if len(blob_indices) < min_blob_size:
@@ -351,14 +363,19 @@ def mean_square_error_pointwise(pred, file_labels, show=False):
         pts_pred.append(center)
         pts_pred_categories.append(winning_category)
 
-    pts_pred = np.flip(pts_pred, axis=1)  # yx -> xy
+    if len(pts_pred) > 0:
+        pts_pred = np.flip(pts_pred, axis=1)  # yx -> xy
+    else:
+        # fix: empty list does not have dimensions like (n, 2)
+        pts_pred = np.array((0, 2))
+
     pts_pred_categories = np.array(pts_pred_categories)
 
-    for cat in range(pred.shape[2]):
+    for cat in range(predictions.shape[2]):
         if show:
             ax = axes[cat // 3, cat % 3]
             ax.set_title(config.class_names[cat])
-            ax.imshow(pred[:, :, cat])
+            ax.imshow(predictions[:, :, cat])
 
         if cat == 0:
             continue
@@ -368,13 +385,16 @@ def mean_square_error_pointwise(pred, file_labels, show=False):
 
         # if len(pts_pred_cat) != len(pts_gt_cat):
         #     print('\t', config.class_names[cat], len(pts_pred_cat), '->', len(pts_gt_cat))
+        mse = mse_value(pts_gt_cat, pts_pred_cat)
 
         if show:
-            ax.scatter(pts_gt_cat[:, 0], pts_gt_cat[:, 1], marker='o')
-            ax.scatter(pts_pred_cat[:, 0], pts_pred_cat[:, 1], marker='x')
+            if len(pts_gt_cat) > 0:
+                ax.scatter(pts_gt_cat[:, 0], pts_gt_cat[:, 1], marker='o')
 
-        mse = mse_value(pts_gt_cat, pts_pred_cat)
-        ax.set_title('{}: {:.2e}'.format(config.class_names[cat], mse))
+            if len(pts_pred_cat) > 0:
+                ax.scatter(pts_pred_cat[:, 0], pts_pred_cat[:, 1], marker='x')
+
+            ax.set_title('{}: {:.2e}'.format(config.class_names[cat], mse))
 
         mse_cat_dict[config.class_names[cat]] = mse
         mse_cat_list.append(mse)
@@ -384,15 +404,19 @@ def mean_square_error_pointwise(pred, file_labels, show=False):
     count_mae = np.mean(np.abs(count_error_categories))
 
     if show:
-        fig.legend(['prediction', 'ground-truth'])
-        axes[2, 2].scatter(pts_pred[:, 0], pts_pred[:, 1], marker='*', color='r')
+        fig.legend(['ground-truth', 'prediction'])
+        if len(pts_pred) > 0:
+            axes[2, 2].scatter(pts_pred[:, 0], pts_pred[:, 1], marker='*', color='r')
+
+        axes[2, 2].set_xlim(0, predictions.shape[1])
+        axes[2, 2].set_ylim(0, predictions.shape[0])
         axes[2, 2].invert_yaxis()
 
         # original image
         img_path = os.path.join('sirky', img_file_name)
         if os.path.isfile(img_path):
             img, _ = load_image(img_path, config.scale, config.center_crop_fraction)
-            img, _ = crop_to_prediction(img, pred.shape)
+            img, _ = crop_to_prediction(img, predictions.shape)
             axes[2, 2].imshow(img)
         else:
             # print('not found:', img_path)
@@ -410,13 +434,12 @@ def mean_square_error_pointwise(pred, file_labels, show=False):
 def show_mse_pixelwise_location(predictions, img, img_path, file_labels, output_location=None, show=True):
     """Show contributions to MSE in full image predictions
 
-    :param predictions:
+    :param predictions: (W, H, C) prediction tensor
     :param img:
     :param img_path:
     :param file_labels:
     :param show:
     :param output_location:
-    :return:
 
     inspiration for grid operations (4-th answer):
     https://stackoverflow.com/questions/36013063/what-is-the-purpose-of-meshgrid-in-python-numpy

@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 from skimage.transform import hough_line, hough_line_peaks
 from skimage.feature import canny
-from skimage.draw import line
+from skimage.draw import line as draw_line
 from skimage import data
 import skimage
 from scipy.spatial import Voronoi, voronoi_plot_2d
@@ -105,7 +105,7 @@ def connect_closer_than(points, canvas_shape, dist_max=100, alpha=100):
     for i in range(dists.shape[0]):
         for j in range(i + 1, dists.shape[1]):
             if dists[i, j] <= dist_max:
-                d = skimage.draw.line(*points[i], *points[j])
+                d = draw_line(*points[i], *points[j])
                 canvas[d] += alpha
 
     canvas = canvas.clip(0, 255).astype(np.uint8)
@@ -152,7 +152,7 @@ def connect_points(canvas, pts1, pts2, c=200):
         print('warning, len mismatch 1: {} x 2: {}'.format(len(pts1), len(pts2)))
 
     for i in range(len(pts1)):
-        d = skimage.draw.line(*pts1[i], *pts2[i])
+        d = draw_line(*pts1[i], *pts2[i])
         canvas[d] = c
 
 

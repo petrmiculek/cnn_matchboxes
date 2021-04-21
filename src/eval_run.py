@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 # local
 import config
-import model_ops
+import model_build
 import models
 from datasets import get_dataset
 from eval_images import full_prediction_all
@@ -23,21 +23,21 @@ if __name__ == '__main__':
 
     # depends on model
     # train dim decided by model
-    config.scale = 0.5
+    config.scale = 0.25
     config.dataset_dim = 64
 
     # should not matter
     config.augment = True
     config.use_weights = False
 
-    config.output_location = None
+    config.output_location = 'best_outputs'
     config.show = True
 
     # load_model_name = 'dilated_64x_exp2_2021-03-26-04-57-57_full'  # /data/datasets/64x_050s_500bg
     # load_model_name = 'dilated_64x_exp2_2021-03-27-06-36-50_full'  # /data/datasets/128x_050s_500bg
     # load_model_name = 'dilated_32x_exp22021-03-28-16-38-11_full'  # /data/datasets/64x_050s_500bg
     # load_model_name = 'dilated_64x_exp2_2021-03-29-15-58-47_full'  # /data/datasets/128x_050s_1000bg
-    load_model_name = 'dilated_64x_exp2_2021-03-29-15-58-47_full'  # /data/datasets/128x_050s_1000bg
+    load_model_name = '32x_d3-5-7-1-1_2021-04-19-14-25-48_full'  # /data/datasets/64x_025s_1000bg
     config.model_name = load_model_name + '_reloaded'
     for dim in [32, 64, 128]:
         if '{}x'.format(dim) in load_model_name:
@@ -45,7 +45,7 @@ if __name__ == '__main__':
             config.dataset_dim = 2 * dim
             break
 
-    base_model, model, aug_model = model_ops.load_model(load_model_name, load_weights=True)
+    base_model, model, aug_model = model_build.load_model(load_model_name, load_weights=True)
     # callbacks = model_ops.get_callbacks()
     config.epochs_trained = 123  #
 

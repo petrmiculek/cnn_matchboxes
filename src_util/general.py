@@ -1,7 +1,13 @@
 # stdlib
+import glob
+import os
+import shutil
 from functools import wraps, lru_cache as lru_cache_orig
 from copy import deepcopy
+from math import log10
 from time import time
+
+import numpy as np
 
 
 def lru_cache(maxsize=64, typed=False, copy=False):
@@ -92,3 +98,49 @@ class DuplicateStream(object):
         # Emit method call to stdout (stream 1)
         callable1 = getattr(self.stream1, self.__missing_method_name)
         return callable1(*args, **kwargs)
+
+
+def conv_dim_calc(w, k, d=1, p=0, s=1):
+    """Calculate change of dimension size caused by a convolution layer
+
+    out = (w - f + 2p) / s + 1
+    f = 1 + (k - 1) * d
+
+    :param w: width
+    :param k: kernel size
+    :param d: dilation rate
+    :param p: padding
+    :param s: stride
+    :return: output size
+    """
+    return (w - (1 + (k - 1) * d) + 2 * p) // s + 1
+
+
+def exp_form(val):
+    """Get number formatted as 1eX = 10^X"""
+    if np.isnan(val):
+        return str(val)
+    if val < 1:
+        # inaccuracy tolerated
+        return '0'
+
+    # return '{:.2e}'.format(val)
+    return '1e{:0.3g}'.format(log10(val))
+
+
+def get_checkpoint_path(path='/tmp/model_checkpoints'):
+    """Get clear directory for model checkpoints, deleting previous contents"""
+    files = glob.glob(os.path.join(path, '*'))
+
+    if len(files) > 0:
+        print('Clearing model checkpoint directory:'
+              '\tPath: {}'.format(path),
+              '\tNumber of files: {}'.format(len(files)))
+
+    for f in files:
+        if os.path.isfile(f):
+            os.remove(f)
+        else:
+            shutil.rmtree(f)
+
+    return os.path.join(path, 'checkpoint')

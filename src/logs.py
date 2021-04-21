@@ -49,7 +49,7 @@ def log_mean_square_error_csv(model_name, img_path, error_sum, category_losses):
         mode = 'a' if os.path.isfile(csv_sum) else 'w'
 
         with open(path, mode) as csv_file:
-            csv_writer = csv.writer(csv_file)  # , delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL
+            csv_writer = csv.writer(csv_file)
             csv_writer.writerow(content)
 
     csv_sum = 'outputs/losses_sum.csv'

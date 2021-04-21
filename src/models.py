@@ -1,46 +1,12 @@
 # external
 import tensorflow as tf
 from tensorflow.keras.layers import \
-    add, Conv2D, BatchNormalization, Softmax, \
-    Input, MaxPool2D, Cropping2D, Concatenate
-from tensorflow.keras.layers.experimental.preprocessing import \
-    CenterCrop, RandomFlip, RandomRotation
+    Conv2D, BatchNormalization, Softmax, \
+    Input, MaxPool2D
 
 # local
-import config
-import util
-
-
-def augmentation(aug_level=1, crop_to=64, ds_dim=64):
-    aug_model = tf.keras.Sequential(name='augmentation')
-    aug_model.add(Input(shape=(config.dataset_dim, config.dataset_dim, 3)))
-
-    hue = [0, 0.1, 0.2, 0.4]
-    contrast = [(1.0, 1.0), (0.75, 1.25), (0.5, 1.5), (0.25, 2.0)]
-    brightness = [0.0, 0.1, 0.3, 0.6]
-    saturation = [(1.0, 1.0), (0.75, 1.25), (0.5, 1.5), (0.1, 1.5)]
-    rotation = 1 / 16  # =rot22.5°
-
-    if aug_level > 0:
-        aug_model.add(RandomFlip("horizontal"))
-        aug_model.add(RandomRotation(rotation))
-        aug_model.add(util.RandomColorDistortion(brightness_delta=brightness[aug_level],
-                                                 contrast_range=contrast[aug_level],
-                                                 hue_delta=hue[aug_level],
-                                                 saturation_range=saturation[aug_level]))
-    assert ds_dim >= crop_to, \
-        'Dataset dim smaller ({}) smaller than target dim ({})'.format(ds_dim, crop_to)
-
-    if ds_dim != crop_to:
-        aug_model.add(CenterCrop(crop_to, crop_to))
-
-    if aug_level == 0 and crop_to == ds_dim:
-        # no other layers, model cannot be empty
-        # base Layer class == identity layer
-        aug_model.add(tf.keras.layers.Layer(name='identity'))
-
-    return aug_model
-
+import general
+import model_util
 
 # common model building blocks
 he_norm = tf.keras.initializers.he_normal()
@@ -51,7 +17,7 @@ conv_args = {
 }
 
 
-def dilated_64x_odd(num_classes=8, hparams={}, name_suffix=''):
+def dilated_64x_odd(num_classes=8, hparams=None, name_suffix=''):
     """
     March 15
 
@@ -62,6 +28,8 @@ def dilated_64x_odd(num_classes=8, hparams={}, name_suffix=''):
     :param name_suffix:
     :return:
     """
+    if hparams is None:
+        hparams = {}
     base_width = hparams['base_width'] if 'base_width' in hparams else 16
 
     dilations = [1, 3, 5, 7, 9, 11, 1, 1]
@@ -87,7 +55,7 @@ def dilated_64x_odd(num_classes=8, hparams={}, name_suffix=''):
     return model, 64
 
 
-def dilated_32x_odd(num_classes=8, hparams={}, name_suffix=''):
+def dilated_32x_odd(num_classes=8, hparams=None, name_suffix=''):
     """
     March 15
 
@@ -98,6 +66,9 @@ def dilated_32x_odd(num_classes=8, hparams={}, name_suffix=''):
     :param name_suffix:
     :return:
     """
+    if hparams is None:
+        hparams = {}
+
     base_width = hparams['base_width'] if 'base_width' in hparams else 16
 
     tail_downscale = hparams['tail_downscale'] if 'tail_downscale' in hparams else 1
@@ -146,7 +117,10 @@ def parameterized(recipe=None):
     input_dim = recipe_input_dim(kernels, dilations)
     param_string = '-'.join((str(d) for d in dilations))
 
-    def model_parameterized(num_classes=8, hparams={}, name_suffix=''):
+    def model_parameterized(num_classes=8, hparams=None, name_suffix=''):
+        if hparams is None:
+            hparams = {}
+
         base_width = hparams['base_width'] if 'base_width' in hparams else 16
 
         x = Input(shape=(None, None, 3))  # input_dim, input_dim  # <- use for model.summary() to see layer sizes
@@ -179,7 +153,7 @@ def recipe_input_dim(kernels, dilations):
     dim = 1
 
     for k, d in zip(kernels, dilations):
-        dim -= util.conv_dim_calc(w=0, k=k, d=d)
+        dim -= general.conv_dim_calc(w=0, k=k, d=d)
 
     if not (dim & (dim - 1) == 0 and dim > 1):
         print("W: model recipe does not result in a power of 2 input size")
@@ -295,5 +269,5 @@ def recipe_sandbox():
     dim = 32
     print(dim)
     for k, d in zip(kernels, dilations):
-        dim += util.conv_dim_calc(w=0, k=k, d=d)
+        dim += general.conv_dim_calc(w=0, k=k, d=d)
         print(dim)

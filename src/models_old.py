@@ -1,6 +1,6 @@
 import os
 from math import log2, ceil
-import util
+import model_util
 
 import numpy as np
 import tensorflow as tf

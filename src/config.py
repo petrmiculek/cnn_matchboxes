@@ -5,41 +5,39 @@
 ## Training configuration
 import os
 
-train = None
-augment = None
-class_weights = None
-
 ## Dataset
 
 # Before loading
-scale = None
-dataset_size = None
-dataset_dim = None  # load resolution
-train_dim = None  # resolution for training
+scale = 0.5
+dataset_size = 1000
+dataset_dim = 128  # load resolution
+train_dim = 64  # resolution for training
 
 # After loading
 class_names = None
 
 # Training flags
+train = True
+learning_rate = 1e-3
+batch_size = 128
+augment = 2
 epochs = 20
+class_weights = None
 
 # Model versions
 # base_model = None
 # aug_model = None
 # model = None
-model_name = None
+model_name = 'None'
 
 # Model run statistics
-epochs_trained = None
+epochs_trained = 0
 
 # Evaluation
 show = False
 center_crop_fraction = 1.0
-learning_rate = 1e-3
 
 # directories
 checkpoint_path = None
 output_location = None
 run_logs_dir = None
-
-logs_hparams_dir = os.path.join('logs', 'hparams')  # todo unused

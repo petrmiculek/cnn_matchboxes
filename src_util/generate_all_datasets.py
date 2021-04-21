@@ -1,7 +1,7 @@
 import os
 import sys
 
-from src_util.image_regions import images_to_dataset
+from src_util.generate_dataset import images_to_dataset
 
 # from src_util.images_labelled import defaultdict
 

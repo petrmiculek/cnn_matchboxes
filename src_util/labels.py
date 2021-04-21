@@ -12,68 +12,42 @@ from general import lru_cache
 
 
 @lru_cache(copy=True)
-def load_labels_dict(path, use_full_path=True, keep_bg=True):
-    """Load annotated points
+def load_labels(path, use_full_path=True, keep_bg=True):
+    """Load image annotations from a csv file
 
     :param path: path to labels file
     :param use_full_path: file_name includes file path
-    :param keep_bg:
-    :return: nested dict: file_name, categories, list of (x, y)
+    :param keep_bg: keep background samples
+    :return: Pandas DataFrame
     """
+    labels = pd.read_csv(path,
+                         header=None,
+                         names=['category', 'x', 'y', 'image', 'img_x', 'img_y'],
+                         dtype={'category': str, 'x': np.int32, 'y': np.int32,
+                                'image': str, 'img_x': np.int32, 'img_y': np.int32}
+                         )
+    if use_full_path:
+        labels['image'] = os.path.dirname(path) + os.sep + labels['image']
 
-    # dict of file_names, dict of categories, list of (x, y)
-    labels = defaultdict(lambda: defaultdict(list))
-
-    with open(path) as f:
-        csv_data = csv.reader(f, delimiter=',')
-        for line in csv_data:
-            if len(line) == 0:
-                continue
-
-            label_name, x, y, img_name, img_w, img_h = line
-
-            if use_full_path:
-                img_name = os.path.dirname(path) + os.sep + img_name
-
-            if label_name == 'background' and not keep_bg:
-                continue
-
-            img = labels[img_name]
-            img[label_name].append((int(x), int(y)))
+    if not keep_bg:
+        labels = labels[labels.category != 'background']
 
     return labels
 
 
-@lru_cache(copy=True)
-def load_labels(path, use_full_path=True, keep_bg=True):
-    csv = pd.read_csv(path,
-                      header=None,
-                      names=['category', 'x', 'y', 'image', 'img_x', 'img_y'],
-                      dtype={'category': str, 'x': np.int32, 'y': np.int32,
-                             'image': str, 'img_x': np.int32, 'img_y': np.int32}
-                      )
-    if use_full_path:
-        csv['image'] = os.path.join(os.path.dirname(path), csv['image'])
-
-    if not keep_bg:
-        csv = csv[csv.category != 'background']
-
-    return csv
-
-
-def rescale_labels(labels, scale, model_crop_delta, center_crop_fraction):
-    """
+def resize_labels(labels, scale, model_crop_delta, center_crop_fraction):
+    """Transform labels' coordinates (as a Pandas DataFrame) according to run-configuration
 
     Fractional crop
     Scale
     Model crop
     + culling points outside cropped areas
 
-    :param labels: labels dataframe
+    :param labels: labels DataFrame
     :param scale:
     :param model_crop_delta:
     :param center_crop_fraction:
-    :return:
+    :return: DataFrame with labels' positions transformed
     """
     labels = labels.copy()
 
@@ -122,20 +96,65 @@ def rescale_labels(labels, scale, model_crop_delta, center_crop_fraction):
     return labels
 
 
-def rescale_labels_dict(dict_labels, orig_img_size, scale, model_crop_delta, center_crop_fraction):
-    """Unused"""
+@lru_cache(copy=True)
+def load_labels_dict(path, use_full_path=True, keep_bg=True):
+    """Load image annotations from a csv file
+
+    unused
+
+    :param path: path to labels file
+    :param use_full_path: file_name includes file path
+    :param keep_bg: keep background samples
+    :return: nested dict: file_name -> categories, category -> list of (x, y)
+    """
+
+    # dict of file_names, dict of categories, list of (x, y)
+    labels = defaultdict(lambda: defaultdict(list))
+
+    with open(path) as f:
+        csv_data = csv.reader(f, delimiter=',')
+        for line in csv_data:
+            if len(line) == 0:
+                continue
+
+            label_name, x, y, img_name, img_w, img_h = line
+
+            if use_full_path:
+                img_name = os.path.dirname(path) + os.sep + img_name
+
+            if label_name == 'background' and not keep_bg:
+                continue
+
+            img = labels[img_name]
+            img[label_name].append((int(x), int(y)))
+
+    return labels
+
+
+def resize_labels_dict(dict_labels, orig_img_size, scale, model_crop_delta, center_crop_fraction):
+    """Transform labels' coordinates (as a dictionary) according to run-configuration
+
+    unused
+
+    :param dict_labels: labels dictionary
+    :param orig_img_size:
+    :param scale:
+    :param model_crop_delta:
+    :param center_crop_fraction:
+    :return:
+    """
     new = dict()
     for cat, labels in dict_labels.items():
         new_l = []
         for pos in labels:
             p = int(pos[0]) * scale, \
-                int(pos[1]) * scale  # e.g. 3024 -> 1512
+                int(pos[1]) * scale
 
             center_crop_diff = orig_img_size[0] * scale * (1 - center_crop_fraction) // 2, \
                                orig_img_size[1] * scale * (1 - center_crop_fraction) // 2
 
             p = p[0] - center_crop_diff[0], \
-                p[1] - center_crop_diff[1]  # e.g. 1512 - 378 -> 1134
+                p[1] - center_crop_diff[1]
 
             p = p[0] - model_crop_delta // 2, \
                 p[1] - model_crop_delta // 2

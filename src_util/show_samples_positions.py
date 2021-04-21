@@ -57,10 +57,10 @@ if __name__ == '__main__':
                         help="show images instead of saving")
 
     """
-    python src_util/images_labelled.py -b -c 64 -p 100
-    python src_util/images_labelled.py -b -c 64 -p 100 -v
-    python src_util/images_labelled.py -b -c 64 -p 500
-    python src_util/images_labelled.py -b -c 64 -p 500 -v
+    python src_util/show_samples_positions.py -b -c 64 -p 100
+    python src_util/show_samples_positions.py -b -c 64 -p 100 -v
+    python src_util/show_samples_positions.py -b -c 64 -p 500
+    python src_util/show_samples_positions.py -b -c 64 -p 500 -v
     
     """
 

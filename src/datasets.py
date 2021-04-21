@@ -10,6 +10,8 @@ from sklearn.utils.class_weight import compute_class_weight
 
 
 def weights_sklearn(class_counts):
+    """Weigh classes (using sklearn) by their inverse frequency"""
+
     fake_ds = [np.repeat(i, cc) for i, cc in enumerate(class_counts)]
     fake_ds = np.hstack(fake_ds)
     return compute_class_weight('balanced',
@@ -42,22 +44,20 @@ def weights_effective_number(class_counts):
     return dict(enumerate(weights))
 
 
-# def profile(x):
-#     return x
-
-
 def get_dataset(dataset_dir, batch_size=64, weights=None):
     """
     Get dataset, class names and class weights
 
     Inspired by https://www.tensorflow.org/tutorials/load_data/images
 
-    :param dataset_dir:
-    :param batch_size:
-    :param weights:
-    :return:
+    :param dataset_dir: dataset directory
+    :param batch_size: batch size
+    :param weights: how to weigh classes - 'none', 'inv_freq', 'eff_num'
+    :return: Dataset, Class names, Class weights
     """
-    assert os.path.isdir(dataset_dir)
+
+    if not os.path.isdir(dataset_dir):
+        raise UserWarning('Invalid dataset directory:', dataset_dir)
 
     autotune = tf.data.experimental.AUTOTUNE
 
@@ -73,6 +73,7 @@ def get_dataset(dataset_dir, batch_size=64, weights=None):
         return tf.argmax(tf.cast(one_hot, dtype='uint8'))
 
     def process_path(file_path):
+        """Join input image and label"""
         label = get_label(file_path)
 
         # load raw data
@@ -82,8 +83,9 @@ def get_dataset(dataset_dir, batch_size=64, weights=None):
         return img, label
 
     def configure_for_performance(ds):
+        """Configure dataset for effective using"""
         ds = ds.cache()
-        ds = ds.shuffle(buffer_size=512)  # reshuffle_each_iteration=True
+        ds = ds.shuffle(buffer_size=512, reshuffle_each_iteration=True)
         ds = ds.batch(batch_size)  # drop_remainder=True
         ds = ds.prefetch(buffer_size=autotune)
         return ds

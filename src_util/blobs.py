@@ -14,7 +14,7 @@ import seaborn as sns
 # local
 # from src.show_results import display_predictions
 import config
-from src_util.labels import load_labels, rescale_labels
+from src_util.labels import load_labels, resize_labels
 from src.eval_images import load_image, crop_to_prediction
 
 
@@ -108,7 +108,7 @@ if __name__ == '__main__':
     predictions_dir = 'preds'
     images_dir = 'sirky'
     labels = load_labels(os.path.join(images_dir, 'labels.csv'), False, False)
-    labels = rescale_labels(labels, config.scale, model_crop_delta, config.center_crop_fraction)
+    labels = resize_labels(labels, config.scale, model_crop_delta, config.center_crop_fraction)
     class_names = ['background'] + sorted(pd.unique(labels.category))
 
     show = True
@@ -176,7 +176,12 @@ if __name__ == '__main__':
             pts_pred.append(center)
             pts_pred_categories.append(winning_category)
 
-        pts_pred = np.flip(pts_pred, axis=1)  # yx -> xy
+        if len(pts_pred) > 0:
+            pts_pred = np.flip(pts_pred, axis=1)  # yx -> xy
+        else:
+            # fix: empty list does not have dimensions like (n, 2)
+            pts_pred = np.array((0, 2))
+
         pts_pred_categories = np.array(pts_pred_categories)
 
         for cat in range(pred.shape[2]):
@@ -219,7 +224,7 @@ if __name__ == '__main__':
         # print(pts_pred.shape[0], len(file_labels))
 
         if show:
-            fig.legend(['prediction', 'ground-truth'])
+            fig.legend(['prediction', 'ground-truth'])  # todo check if matching
 
             # original image
             img_path = os.path.join(images_dir, img_file_name)

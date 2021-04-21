@@ -12,7 +12,7 @@ sys.path.extend(['/home/petrmiculek/Code/light_matches',
                  '/home/petrmiculek/Code/light_matches/src_util'])
 
 # local
-from run import run, tf_init
+from training_run import run, tf_init
 from models import *
 from models_old import *
 import config
@@ -241,23 +241,25 @@ if __name__ == '__main__':
             }
             run(m, hparams)
 
+    """
+
+    config.epochs = 50
     config.dataset_dim = 128
 
     for m in [parameterized(recipe_64x_odd)]:
-        for width in hp_base_width.domain.values:
-            for augmentation in hp_augmentation.domain.values:
-                for scale in hp_scale.domain.values:
+        for scale in hp_scale.domain.values:
+            for width in hp_base_width.domain.values:
+                for augmentation in [2, 3]:
                     hparams = {
                         'base_width': width // 2,
-                        'augmentation': augmentation,
+                        'aug_level': augmentation,
                         'scale': scale,
 
                         'ds_bg_samples': config.dataset_size,
                         'crop_fraction': config.center_crop_fraction,
                     }
                     run(m, hparams)
-    """
-    config.epochs = 50
+    # """
 
     config.dataset_dim = 64
 
@@ -272,7 +274,7 @@ if __name__ == '__main__':
     for model in models:
         for scale in hp_scale.domain.values:
             for width in hp_base_width.domain.values:
-                for aug_level in hp_aug_level.domain.values:
+                for aug_level in [2, 3]:
                     config.scale = scale
                     config.augment = aug_level
                     hparams = {
@@ -309,7 +311,7 @@ if __name__ == '__main__':
     #                     'crop_fraction': config.center_crop_fraction,
     #                 }
     #                 run(model, hparams)
-
+    """
     config.dataset_dim = 128
     config.scale = 0.5
     models = [parameterized(recipe_64x_odd)]
@@ -326,6 +328,7 @@ if __name__ == '__main__':
                 }
                 run(model, hparams)
 
+    """
     """
     # config.dataset_dim = 64
     # m = parameterized(recipe_32x_odd)

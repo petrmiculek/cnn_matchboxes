@@ -2,6 +2,9 @@
 import os
 
 # external
+import sys
+import warnings
+
 import tensorflow as tf
 
 from tensorflow.keras.callbacks import \
@@ -9,7 +12,11 @@ from tensorflow.keras.callbacks import \
     LearningRateScheduler, ModelCheckpoint
 
 # local
-import util
+from tensorflow.python.keras import Input
+from tensorflow.python.keras.layers import RandomFlip, Resizing, RandomRotation, RandomZoom, CenterCrop
+
+
+import model_util
 import models
 import config
 
@@ -17,10 +24,10 @@ import config
 def compile_model(model):
     """ Custom loss and metrics """
     scce_loss = tf.losses.SparseCategoricalCrossentropy(from_logits=False)
-    accu = util.Accu(name='accu')  # ~= SparseCategoricalAccuracy
-    prec = util.Precision(name='prec')
-    recall = util.Recall(name='recall')
-    pr_value = util.AUC(name='pr_value', curve='PR')
+    accu = model_util.Accu(name='accu')  # ~= SparseCategoricalAccuracy
+    prec = model_util.Precision(name='prec')
+    recall = model_util.Recall(name='recall')
+    pr_value = model_util.AUC(name='pr_value', curve='PR')
 
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=config.learning_rate),
@@ -40,7 +47,7 @@ def load_model(model_name, load_weights=True):
         config_json = config_file.read()
 
     model = tf.keras.models.model_from_json(config_json,
-                                            custom_objects={'RandomColorDistortion': util.RandomColorDistortion})
+                                            custom_objects={'RandomColorDistortion': model_util.RandomColorDistortion})
 
     compile_model(model)
 
@@ -68,9 +75,9 @@ def get_callbacks():
     # ^ No improvement on training data for 5 epochs -> Reduce LR
     # No improvement on validation data for 15 epochs -> Halt
 
-    lr_logging = util.LearningRateLogger()
+    lr_logging = model_util.LearningRateLogger()
 
-    mse_logging = util.MSELogger(freq=5)
+    mse_logging = model_util.MSELogger(freq=5)
 
     tensorboard_callback = TensorBoard(config.run_logs_dir, write_graph=False,
                                        histogram_freq=1, profile_batch=0)  # profiling needs sudo
@@ -100,9 +107,59 @@ def get_callbacks():
 def build_new_model(model_factory, hparams, name_suffix=''):
     base_model, config.train_dim = model_factory(len(config.class_names),
                                                  hparams=hparams, name_suffix=name_suffix)
-    aug_model = models.augmentation(aug_level=hparams['aug_level'], crop_to=config.train_dim, ds_dim=config.dataset_dim)
+    aug_model = augmentation(aug_level=hparams['aug_level'], crop_to=config.train_dim, ds_dim=config.dataset_dim)
     config.model_name = base_model.name + '_full'
     model = tf.keras.Sequential([aug_model, base_model], name=config.model_name)
     compile_model(model)
 
     return base_model, model, aug_model
+
+
+def augmentation(aug_level=1, crop_to=64, ds_dim=64):
+    """
+
+    RandomZoom
+    A positive value means zooming out, while a negative value means zooming in.
+
+    :param aug_level:
+    :param crop_to:
+    :param ds_dim:
+    :return:
+    """
+    if ds_dim < crop_to:
+        raise ValueError('E: Augmentation: Dataset dim ({}) smaller than target dim ({})'.format(ds_dim, crop_to))
+
+    if aug_level > 0 and ds_dim == crop_to:
+        warnings.warn('W: Augmentation: Model input and output dimensions are the same. \nAugmentation may create artifacts around image edges (e.g. black corners)')
+
+    aug_model = tf.keras.Sequential(name='augmentation')
+    aug_model.add(Input(shape=(ds_dim, ds_dim, 3)))
+
+    e = sys.float_info.epsilon
+
+    # parameters for augmentation-levels 0..3
+    rotation = 1 / 16  # =rot22.5°
+    brightness = [0.0, 0.1, 0.3, 0.5]
+    contrast = [(1.0, 1.0 + e), (0.75, 1.25), (0.5, 1.5), (0.35, 2.0)]
+    hue = [0, 0.1, 0.2, 0.4]  # ok
+    saturation = [(1.0, 1.0 + e), (0.75, 1.25), (0.5, 1.5), (0.1, 1.5)]
+    zoom = [(0.0, 0.0 + e), (-0.1, +0.1), (-0.25, 0.25), (-0.5, +0.5)]
+
+    if aug_level > 0:
+        aug_model.add(RandomFlip("horizontal"))
+        aug_model.add(RandomRotation(rotation))
+        aug_model.add(model_util.RandomColorDistortion(brightness_delta=brightness[aug_level],
+                                                       contrast_range=contrast[aug_level],
+                                                       hue_delta=hue[aug_level],
+                                                       saturation_range=saturation[aug_level]))
+        aug_model.add(RandomZoom(zoom[aug_level], fill_mode='constant'))
+
+    if ds_dim != crop_to:
+        aug_model.add(CenterCrop(crop_to, crop_to))
+
+    if aug_level == 0 and crop_to == ds_dim:
+        # no other layers, model cannot be empty
+        # base Layer class == identity layer
+        aug_model.add(tf.keras.layers.Layer(name='identity'))
+
+    return aug_model

@@ -35,15 +35,14 @@ sys.path.extend(['/home/petrmiculek/Code/light_matches',
                  '/home/petrmiculek/Code/light_matches/src_util'])
 
 # local files
-import models
-import model_ops
-import util
+from models import *
+import model_build
 from datasets import get_dataset
 from eval_images import full_prediction_all
 from eval_samples import evaluate_model, show_layer_activations
-from logging_results import log_model_info
+from logs import log_model_info
 from mining import mine_hard_cases
-from src_util.general import safestr, DuplicateStream, timing
+from src_util.general import safestr, DuplicateStream, timing, get_checkpoint_path
 import config
 
 
@@ -60,6 +59,7 @@ def run(model_builder, hparams):
         config.use_weights = False
         config.scale = 0.5
         config.center_crop_fraction = 0.5
+        config.batch_size = 128
 
     hard_mining = False
 
@@ -67,26 +67,29 @@ def run(model_builder, hparams):
     # if True:
     try:
         dataset_dir = f'/data/datasets/{config.dataset_dim}x_{int(100 * config.scale):03d}s_{config.dataset_size}bg'
-        config.checkpoint_path = util.get_checkpoint_path()
+        print('Loading dataset from:', dataset_dir)
+        config.checkpoint_path = get_checkpoint_path()
 
         time = safestr(datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
 
         """ Load dataset """
-        val_ds, _, _ = get_dataset(dataset_dir + '_val')
-        train_ds, config.class_names, class_weights = get_dataset(dataset_dir, weights=hparams['class_weights'])
+        use_weights = hparams['class_weights'] if 'class_weights' in hparams else None
+        val_ds, _, _ = get_dataset(dataset_dir + '_val', batch_size=config.batch_size)
+        train_ds, config.class_names, class_weights = \
+            get_dataset(dataset_dir, weights=use_weights, batch_size=config.batch_size)
 
         """ Create/Load a model """
         if config.train:
-            base_model, model, aug_model = model_ops.build_new_model(model_builder, hparams, name_suffix=time)
-            callbacks = model_ops.get_callbacks()
+            base_model, model, aug_model = model_build.build_new_model(model_builder, hparams, name_suffix=time)
+            callbacks = model_build.get_callbacks()
 
         else:
             load_model_name = 'dilated_64x_exp2_2021-03-29-15-58-47_full'  # /data/datasets/128x_050s_1000bg
             model_config_path = os.path.join('outputs', load_model_name, 'model_config.json')
             weights_path = os.path.join('models_saved', load_model_name)
 
-            base_model, model, aug_model = model_ops.load_model(model_config_path, weights_path)
-            callbacks = model_ops.get_callbacks()
+            base_model, model, aug_model = model_build.load_model(model_config_path, weights_path)
+            callbacks = model_build.get_callbacks()
             config.epochs_trained = 123
 
         """ Model outputs dir """
@@ -205,7 +208,8 @@ def run(model_builder, hparams):
         sys.stdout = stdout_orig
 
     except Exception as ex:
-        print(ex, file=sys.stderr)
+        print(type(ex), ex, '\n\n', file=sys.stderr)
+        # raise
 
 
 def tf_init():
@@ -230,26 +234,26 @@ if __name__ == '__main__':
     config.dataset_size = 1000
     config.train = True
     # train dim decided by model
-    config.dataset_dim = 128
-    config.augment = True
+    config.dataset_dim = 64
+    config.augment = 3
     config.use_weights = False
     config.show = False
-    config.scale = 0.5
+    config.scale = 0.25
     config.center_crop_fraction = 0.5
 
     # model params
     hp_base_width = hp.HParam('base_width', hp.Discrete([8, 16, 32]))
     # non-model params
+    hp_aug_level = hp.HParam('aug_level', hp.Discrete([0, 1, 2, 3]))
     hp_class_weights = hp.HParam('ds_bg_samples', hp.Discrete(['none', 'inverse_frequency', 'effective_number']))
-    hp_ds_bg_samples = hp.HParam('ds_bg_samples', hp.Discrete([200, 700, 1000]))
-    hp_augmentation = hp.HParam('augmentation', hp.Discrete([False, True]))
-    hp_scale = hp.HParam('scale', hp.Discrete([0.25, 0.5]))
     hp_crop_fraction = hp.HParam('crop_fraction', hp.Discrete([0.5, 1.0]))
+    hp_ds_bg_samples = hp.HParam('ds_bg_samples', hp.Discrete([200, 700, 1000]))
+    hp_scale = hp.HParam('scale', hp.Discrete([0.25, 0.5]))
 
     with tf.summary.create_file_writer('logs').as_default():
         hp.hparams_config(
             hparams=[
-                hp_augmentation,
+                hp_aug_level,
                 hp_base_width,
                 hp_class_weights,
                 hp_crop_fraction,
@@ -268,11 +272,11 @@ if __name__ == '__main__':
                 hp.Metric('pr_value_val')]
         )
 
-    m = models.dilated_64x_odd
+    m = parameterized(recipe_32x_odd)
     hparams = {
-        'base_width': 8,
+        'base_width': 16,
 
-        'augmentation': config.augment,
+        'aug_level': config.augment,
         'ds_bg_samples': config.dataset_size,
         'scale': config.scale,
         'crop_fraction': config.center_crop_fraction,

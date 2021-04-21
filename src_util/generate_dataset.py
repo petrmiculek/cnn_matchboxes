@@ -26,50 +26,39 @@ padding x radius for background
 Example standalone usage:
 ## 64x
 # bg100
-python src_util/image_regions.py -f -b -c 64 -p 100 -s 50
-python src_util/image_regions.py -b -c 64 -r -p 100 -s 50
-python src_util/image_regions.py -f -b -c 64 -p 100 -s 50 -v
-python src_util/image_regions.py -b -c 64 -r -p 100 -s 50 -v
+python src_util/generate_dataset.py -f -b -c 64 -p 100 -s 50
+python src_util/generate_dataset.py -b -c 64 -r -p 100 -s 50
+python src_util/generate_dataset.py -f -b -c 64 -p 100 -s 50 -v
+python src_util/generate_dataset.py -b -c 64 -r -p 100 -s 50 -v
 
 # bg500
-python src_util/image_regions.py -f -b -c 64 -p 500 -s 50
-python src_util/image_regions.py -b -c 64 -r -p 500 -s 50
-python src_util/image_regions.py -f -b -c 64 -p 500 -s 50 -v
-python src_util/image_regions.py -b -c 64 -r -p 500 -s 50 -v
+python src_util/generate_dataset.py -f -b -c 64 -p 500 -s 50
+python src_util/generate_dataset.py -b -c 64 -r -p 500 -s 50
+python src_util/generate_dataset.py -f -b -c 64 -p 500 -s 50 -v
+python src_util/generate_dataset.py -b -c 64 -r -p 500 -s 50 -v
 
 ## 128x
 # bg100
-python src_util/image_regions.py -f -b -c 128 -p 100 -s 50
-python src_util/image_regions.py -b -c 128 -r -p 100 -s 50
-python src_util/image_regions.py -f -b -c 128 -p 100 -s 50 -v
-python src_util/image_regions.py -b -c 128 -r -p 100 -s 50 -v
+python src_util/generate_dataset.py -f -b -c 128 -p 100 -s 50
+python src_util/generate_dataset.py -b -c 128 -r -p 100 -s 50
+python src_util/generate_dataset.py -f -b -c 128 -p 100 -s 50 -v
+python src_util/generate_dataset.py -b -c 128 -r -p 100 -s 50 -v
 
 # bg500
-python src_util/image_regions.py -f -b -c 128 -p 500 -s 50
-python src_util/image_regions.py -b -c 128 -r -p 500 -s 50
-python src_util/image_regions.py -f -b -c 128 -p 500 -s 50 -v
-python src_util/image_regions.py -b -c 128 -r -p 500 -s 50 -v
+python src_util/generate_dataset.py -f -b -c 128 -p 500 -s 50
+python src_util/generate_dataset.py -b -c 128 -r -p 500 -s 50
+python src_util/generate_dataset.py -f -b -c 128 -p 500 -s 50 -v
+python src_util/generate_dataset.py -b -c 128 -r -p 500 -s 50 -v
 
 # bg250
-python src_util/image_regions.py -f -b -c 64 -p 250 -s 50
-python src_util/image_regions.py -b -c 64 -r -p 250 -s 50
-python src_util/image_regions.py -f -b -c 64 -p 250 -s 50 -v
-python src_util/image_regions.py -b -c 64 -r -p 250 -s 50 -v
+python src_util/generate_dataset.py -f -b -c 64 -p 250 -s 50
+python src_util/generate_dataset.py -b -c 64 -r -p 250 -s 50
+python src_util/generate_dataset.py -f -b -c 64 -p 250 -s 50 -v
+python src_util/generate_dataset.py -b -c 64 -r -p 250 -s 50 -v
 """
 
 random.seed(1234)
 np.random.seed(1234)
-
-
-def crop_out(img, low_x, low_y, high_x, high_y):
-    try:
-        cropped = img[low_x:high_x, low_y:high_y].copy()  # x,y
-    except Exception as ex:
-        print(ex)
-        print(img is None, f'{low_x}-{high_x}, {low_y}-{high_y}')
-        cropped = None
-
-    return cropped
 
 
 def get_boundaries(img, center_pos, radius=32):
@@ -97,12 +86,19 @@ def get_boundaries(img, center_pos, radius=32):
 
 def cut_out_around_point(img, center_pos, radius=32):
     low_x, low_y, high_x, high_y = get_boundaries(img, center_pos, radius)
-    return crop_out(img, low_x, low_y, high_x, high_y)
+    try:
+        cropped = img[low_x:high_x, low_y:high_y].copy()  # x,y
+    except Exception as ex:
+        print(ex)
+        print(img is None, f'{low_x}-{high_x}, {low_y}-{high_y}')
+        cropped = None
+
+    return cropped
 
 
 def images_to_dataset(do_foreground=True, do_background=True, val=False, region_side=64,
                       per_image_samples=100, scale_percentage=50, reduced_sampling_area=False, output_folder=None):
-    """
+    """Create keypoint and/or background samples from images and annotations
 
     side-note: there are 1700 annotations in ~50 images => 35 keypoints per image
     """
@@ -212,8 +208,8 @@ def images_to_dataset(do_foreground=True, do_background=True, val=False, region_
 
             coords = np.unique(coords, axis=0)
 
-            assert min_x > 0
-            assert min_y > 0
+            assert min_x >= 0
+            assert min_y >= 0
 
             # debug
             # coords = np.vstack([
@@ -233,7 +229,7 @@ def images_to_dataset(do_foreground=True, do_background=True, val=False, region_
             coords = coords[:per_image_samples]
 
             if np.any(coords < 0):
-                print('negative')
+                print('Warning: negative coordinates in background samples')
 
             # save background positions to a csv file (same structure as keypoints)
             with open(bg_csv_file, 'a') as csvfile:
@@ -249,7 +245,7 @@ def images_to_dataset(do_foreground=True, do_background=True, val=False, region_
                     filename_no_suffix = file.split('.')[0]
                     region_filename = f'{filename_no_suffix}_({x},{y}).jpg'
 
-                    tmp = cv.imwrite(region_path + region_filename, region_background)
+                    cv.imwrite(region_path + region_filename, region_background)
                     out_csv.writerow(['background', x, y, file, orig_size[0], orig_size[1]])
 
     if do_background:
@@ -292,8 +288,8 @@ if __name__ == '__main__':
     parser.add_argument('--output_folder', '-o', type=str, default=None,
                         help="output folder")
 
-    # python src_util/image_regions.py -f -b -c 64 -p 100 -s 50
-    # python src_util/image_regions.py -b -c 64 -r -p 100 -s 50
+    # python src_util/generate_dataset.py -f -b -c 64 -p 100 -s 50
+    # python src_util/generate_dataset.py -b -c 64 -r -p 100 -s 50
 
     args = parser.parse_args()
     images_to_dataset(args.foreground, args.background, args.val, args.cutout_dize,

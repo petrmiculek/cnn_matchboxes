@@ -1,17 +1,13 @@
 # stdlib
-import os
-import glob
-import shutil
-from math import log10
 
 # external
-import numpy as np
 import tensorflow as tf
 import tensorflow_addons as tfa
 import tensorflow.keras.backend as K
 
 # local
 from eval_images import full_prediction_all
+from general import exp_form
 
 """
 Model-related utility code
@@ -19,22 +15,30 @@ Model-related utility code
 """
 
 
-def get_checkpoint_path(path='/tmp/model_checkpoints'):
-    files = glob.glob(os.path.join(path, '*'))
-    for f in files:
-        if os.path.isfile(f):
-            os.remove(f)
-        else:
-            shutil.rmtree(f)
-
-    return os.path.join(path, 'checkpoint')
-
-
 def pred_reshape(y_pred):
-    return tf.reshape(y_pred, [tf.shape(y_pred)[0], tf.shape(y_pred)[3]])
+    """Fix for prediction dimensions: (B, 1, 1, C) -> (B, C)
+
+    B = batch size
+    C = output channels (8)
+
+    :param y_pred: prediction tensor
+    :return: squeezed prediction tensor
+    """
+    # return tf.reshape(y_pred, [tf.shape(y_pred)[0], tf.shape(y_pred)[3]])
+    y_pred = tf.squeeze(y_pred, axis=2)
+    y_pred = tf.squeeze(y_pred, axis=1)
+    return y_pred
 
 
 class Accu(tf.metrics.SparseCategoricalAccuracy):
+    """Calculate sample-level accuracy metric
+
+    fixes:
+    prediction shape
+    make prediction fail if all predicted values equal
+
+    """
+
     def update_state(self, y_true, y_pred, sample_weight=None):
         # reshape prediction - keep only Batch and Class-probabilities dimensions
         y_pred_reshaped = pred_reshape(y_pred)
@@ -48,6 +52,12 @@ class Accu(tf.metrics.SparseCategoricalAccuracy):
 
 
 class Precision(tf.keras.metrics.Precision):
+    """Calculate sample-level PR-value metric
+
+    prediction reshaped
+    prediction treated as binary (0 = background, 1 = keypoint)
+    """
+
     def update_state(self, y_true, y_pred, sample_weight=None):
         y_pred_reshaped = pred_reshape(y_pred)
         y_pred_binary = tf.where(tf.argmax(y_pred_reshaped, axis=1) > 0, 1, 0)
@@ -58,6 +68,12 @@ class Precision(tf.keras.metrics.Precision):
 
 
 class Recall(tf.keras.metrics.Recall):
+    """Calculate sample-level Recall metric
+
+    prediction reshaped
+    prediction treated as binary (0 = background, 1 = keypoint)
+    """
+
     def update_state(self, y_true, y_pred, sample_weight=None):
         y_pred_reshaped = pred_reshape(y_pred)
         y_pred_binary = tf.where(tf.argmax(y_pred_reshaped, axis=1) > 0, 1, 0)
@@ -66,6 +82,8 @@ class Recall(tf.keras.metrics.Recall):
 
 
 class F1(tfa.metrics.F1Score):
+    """Unused"""
+
     def update_state(self, y_true, y_pred, sample_weight=None):
         y_pred_reshaped = pred_reshape(y_pred)
         # y_pred_binary = tf.where(tf.argmax(y_pred_reshaped, axis=1) > 0, 1.0, 0.0)
@@ -86,6 +104,7 @@ class F1(tfa.metrics.F1Score):
 # https://datascience.stackexchange.com/questions/48246/how-to-compute-f1-in-tensorflow
 # unused
 def f1_metric(y_true, y_pred):
+    """Unused"""
     true_positives = tf.cast(K.sum(K.round(K.clip(y_true * y_pred, 0, 1))), dtype=tf.float32)
     possible_positives = tf.cast(K.sum(K.round(K.clip(y_true, 0, 1))), dtype=tf.float32)
     predicted_positives = tf.cast(K.sum(K.round(K.clip(y_pred, 0, 1))), dtype=tf.float32)
@@ -97,6 +116,12 @@ def f1_metric(y_true, y_pred):
 
 
 class AUC(tf.keras.metrics.AUC):
+    """Calculate PR-value metric
+
+    prediction reshaped
+    prediction treated as binary (0 = background, 1 = keypoint)
+    """
+
     def update_state(self, y_true, y_pred, sample_weight=None):
         y_pred_reshaped = pred_reshape(y_pred)
         y_pred_binary = tf.where(tf.argmax(y_pred_reshaped, axis=1) > 0, 1, 0)
@@ -105,6 +130,11 @@ class AUC(tf.keras.metrics.AUC):
 
 
 class MSELogger(tf.keras.callbacks.Callback):
+    """Calculate full image prediction MSE metric
+
+    results printed and logged to TensorBoard
+    """
+
     def __init__(self, freq=1):
         super().__init__()
         self._supports_tf_logs = True
@@ -114,12 +144,13 @@ class MSELogger(tf.keras.callbacks.Callback):
         if epoch > 0 and epoch % self.freq == 0:
             base_model = self.model.layers[1]
 
-            pix_mse_val, dist_mse_val, count_mae_val = full_prediction_all(base_model, val=True, output_location=None, show=False)
-            pix_mse_train, dist_mse_train, count_mae_train = full_prediction_all(base_model, val=False, output_location=None, show=False)
+            pix_mse_val, dist_mse_val, count_mae_val = full_prediction_all(base_model, val=True, output_location=None,
+                                                                           show=False)
+            pix_mse_train, dist_mse_train, count_mae_train = full_prediction_all(base_model, val=False,
+                                                                                 output_location=None, show=False)
 
             print('dist_mse:', exp_form(dist_mse_train), exp_form(dist_mse_val))
             print('count_mae: {:0.2g} {:0.2g}'.format(count_mae_train, count_mae_val))
-
 
             tf.summary.scalar('pix_mse_train', pix_mse_train, step=epoch)
             tf.summary.scalar('dist_mse_train', dist_mse_train, step=epoch)
@@ -131,6 +162,8 @@ class MSELogger(tf.keras.callbacks.Callback):
 
 
 class LearningRateLogger(tf.keras.callbacks.Callback):
+    """Log learning rate to TensorBoard"""
+
     def __init__(self):
         super().__init__()
         self._supports_tf_logs = True
@@ -159,6 +192,43 @@ def lr_scheduler(epoch, lr, start=10, end=150, decay=-0.10):
         return lr
     else:
         return lr * tf.math.exp(decay)
+
+
+class RandomResizing(tf.keras.layers.Layer):  # (Resizing):
+    """Randomly resize=zoom image
+
+    Unused
+
+    Could derive from:
+    keras.layers.experimental.preprocessing.Resizing
+    only passing a random value from range to the call params
+    """
+
+    def __init__(self,
+                 zoom_range=(1, 1),
+                 **kwargs):
+        super(RandomResizing, self).__init__(**kwargs)
+        self.zoom_range = zoom_range
+
+    def call(self, images, training=None):
+        if training is None:
+            training = tf.keras.backend.learning_phase()
+        if not training:
+            return images
+
+        scale = tf.random_uniform([], minval=self.zoom_range[0], maxval=self.zoom_range[1],
+                                  dtype=tf.float32, seed=None, name=None)
+        new_dim = images.shape[1] * scale
+        images = tf.image.resize(images, [new_dim, new_dim])
+
+        return images
+
+    def get_config(self, *args, **kwargs):
+        return {
+            'zoom_range': self.zoom_range
+        }
+
+    # from_config() does not need to be reimplemented
 
 
 class RandomColorDistortion(tf.keras.layers.Layer):
@@ -203,29 +273,4 @@ class RandomColorDistortion(tf.keras.layers.Layer):
             'saturation_range': self.saturation_range,
         }
 
-    # from_config() needs not to be reimplemented
-
-
-def conv_dim_calc(w, k, d=1, p=0, s=1):
-    """Calculate change of dimension size caused by a convolution layer
-
-    out = (w - f + 2p) / s + 1
-    f = 1 + (k - 1) * d
-
-    :param w: width
-    :param k: kernel size
-    :param d: dilation rate
-    :param p: padding
-    :param s: stride
-    :return: output size
-    """
-    return (w - (1 + (k - 1) * d) + 2 * p) // s + 1
-
-
-def exp_form(val):
-    if np.isnan(val):
-        return str(val)
-    if val < 1:
-        return '0'
-    # return '{:.2e}'.format(val)
-    return '1e{:0.3g}'.format(log10(val))
+    # from_config() does not need to be reimplemented
