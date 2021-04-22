@@ -149,7 +149,7 @@ def parameterized(recipe=None):
     return model_parameterized
 
 
-def recipe_input_dim(kernels, dilations):
+def recipe_input_dim(kernels, dilations, *args):
     dim = 1
 
     for k, d in zip(kernels, dilations):
@@ -271,3 +271,38 @@ def recipe_sandbox():
     for k, d in zip(kernels, dilations):
         dim += general.conv_dim_calc(w=0, k=k, d=d)
         print(dim)
+
+
+def metarecipe_from_dilation(layers=4):
+    dilation_rate = 1
+    k = 3
+    kernels = []
+    dilations = []
+    widths = []
+    for i in range(layers):
+        kernels.append(k)
+        dilations.append(dilation_rate)
+        dilation_rate += 2
+        widths.append(8 * 2 ** (i // 2))
+
+    def recipe_from_dilation():
+        return kernels, dilations, widths
+
+    return recipe_from_dilation
+
+
+def recipe_51x_odd():
+    dilations = [1, 3, 5, 7, 9, 1]
+    kernels = [3, 3, 3, 3, 3, 1]
+    widths = [2, 2, 4, 4, 8, 8]
+
+    return kernels, dilations, widths
+
+
+def recipe_73x_odd():
+    dilations = [1, 3, 5, 7, 9, 11, 1]
+    kernels = [3, 3, 3, 3, 3, 3, 1]
+    widths = [2, 2, 4, 4, 8, 8, 8]
+
+    return kernels, dilations, widths
+

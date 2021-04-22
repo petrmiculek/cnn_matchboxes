@@ -51,6 +51,7 @@ def run(model_builder, hparams):
     """
     if False:
         # provided by caller
+        config.epochs = 50
         config.dataset_dim = 64
         config.dataset_size = 200
         config.augment = True
@@ -234,12 +235,13 @@ if __name__ == '__main__':
     config.dataset_size = 1000
     config.train = True
     # train dim decided by model
-    config.dataset_dim = 64
+    config.dataset_dim = 128
     config.augment = 3
     config.use_weights = False
     config.show = False
     config.scale = 0.25
     config.center_crop_fraction = 0.5
+    config.epochs = 50
 
     # model params
     hp_base_width = hp.HParam('base_width', hp.Discrete([8, 16, 32]))
@@ -272,9 +274,9 @@ if __name__ == '__main__':
                 hp.Metric('pr_value_val')]
         )
 
-    m = parameterized(recipe_32x_odd)
+    m = parameterized(recipe_51x_odd)
     hparams = {
-        'base_width': 16,
+        'base_width': 32,
 
         'aug_level': config.augment,
         'ds_bg_samples': config.dataset_size,

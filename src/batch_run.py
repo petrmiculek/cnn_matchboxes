@@ -246,12 +246,13 @@ if __name__ == '__main__':
     config.epochs = 50
     config.dataset_dim = 128
 
-    for m in [parameterized(recipe_64x_odd)]:
+    for m in [parameterized(recipe_51x_odd),
+              parameterized(recipe_73x_odd)]:
         for scale in hp_scale.domain.values:
             for width in hp_base_width.domain.values:
                 for augmentation in [2, 3]:
                     hparams = {
-                        'base_width': width // 2,
+                        'base_width': width,
                         'aug_level': augmentation,
                         'scale': scale,
 
@@ -259,6 +260,22 @@ if __name__ == '__main__':
                         'crop_fraction': config.center_crop_fraction,
                     }
                     run(m, hparams)
+
+    config.center_crop_fraction = 1.0
+    for m in [parameterized(recipe_64x_odd)]:
+        for scale in hp_scale.domain.values:
+            # for width in hp_base_width.domain.values:
+            for augmentation in [2, 3]:
+                hparams = {
+                    'base_width': 16,
+                    'aug_level': augmentation,
+                    'scale': scale,
+
+                    'ds_bg_samples': config.dataset_size,
+                    'crop_fraction': config.center_crop_fraction,
+                }
+                run(m, hparams)
+
     # """
 
     config.dataset_dim = 64
