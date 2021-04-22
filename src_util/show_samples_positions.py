@@ -66,8 +66,11 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    run_config = f'{args.cutout_size}x_050s_{args.per_image_samples}bg' \
-                 + '_KPonly' * (not args.background) + '_val' * args.val
+    scale_fixed = 50  # todo
+    run_config = '{}x_{:3d}s_{}bg{}{}'.format(
+        args.cutout_size, scale_fixed, args.per_image_samples, '_KPonly' * (not args.background), '_val' * args.val)
+
+
 
     scale = 1  # 0.25
     image_input_folder = 'sirky' + '_val' * args.val
@@ -105,7 +108,7 @@ if __name__ == '__main__':
 
     if not args.show:
         # save
-        print(f'Saving to {output_folder}')
+        print('Saving to', output_folder)
         for file in labels:
             img = cv.imread(image_input_folder + os.sep + file)
             if img is None:

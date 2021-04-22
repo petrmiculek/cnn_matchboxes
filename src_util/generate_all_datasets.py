@@ -17,11 +17,13 @@ for dim in dims:
     for scale in scales:
         for close, far in background_sampling:
             for val in [False, True]:
-                out_folder = f'/data/datasets/{dim}x_{scale:03d}s_{close + far}bg' + ('_val' * val)
+                out_folder = '/data/datasets/{}x_{:03d}s_{}bg{}'\
+                             .format(dim, scale, close + far, '_val' if val else '')
                 if os.path.isdir(out_folder):
                     print('Skipping existing:', out_folder)
                     continue
-                print(f'{dim}, {scale}, {close}, {far} -> {out_folder}')
+                print('{}, {}, {}, {} -> {}'
+                      .format(dim, scale, close, far, out_folder))
                 kwargs = {
                     'do_background': True,
                     'val': val,

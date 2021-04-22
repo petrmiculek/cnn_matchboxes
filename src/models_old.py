@@ -230,7 +230,7 @@ def dilated_1(num_classes, name_suffix=''):
                kernel_initializer=he_norm, )(x)
 
     for i in range(1, 6):
-        y = Cropping2D(cropping=(i, i), name=f'crop{i}')(x)
+        y = Cropping2D(cropping=(i, i))(x)
 
         x = BatchNormalization()(x)
         x = Conv2D(width, 3, **conv_args, dilation_rate=i, )(x)
@@ -366,7 +366,7 @@ def fcn_maxpool_div(num_classes, weight_init_idx=0):
     model.add(Rescaling(1.0 / 255))
 
     for i in range(layers):
-        model.add(BatchNormalization(name='bn'))
+        model.add(BatchNormalization())
         model.add(Conv2D(width[i] * channels_base,
                          3,
                          activation='relu',

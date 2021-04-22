@@ -194,43 +194,6 @@ def lr_scheduler(epoch, lr, start=10, end=150, decay=-0.10):
         return lr * tf.math.exp(decay)
 
 
-class RandomResizing(tf.keras.layers.Layer):  # (Resizing):
-    """Randomly resize=zoom image
-
-    Unused
-
-    Could derive from:
-    keras.layers.experimental.preprocessing.Resizing
-    only passing a random value from range to the call params
-    """
-
-    def __init__(self,
-                 zoom_range=(1, 1),
-                 **kwargs):
-        super(RandomResizing, self).__init__(**kwargs)
-        self.zoom_range = zoom_range
-
-    def call(self, images, training=None):
-        if training is None:
-            training = tf.keras.backend.learning_phase()
-        if not training:
-            return images
-
-        scale = tf.random_uniform([], minval=self.zoom_range[0], maxval=self.zoom_range[1],
-                                  dtype=tf.float32, seed=None, name=None)
-        new_dim = images.shape[1] * scale
-        images = tf.image.resize(images, [new_dim, new_dim])
-
-        return images
-
-    def get_config(self, *args, **kwargs):
-        return {
-            'zoom_range': self.zoom_range
-        }
-
-    # from_config() does not need to be reimplemented
-
-
 class RandomColorDistortion(tf.keras.layers.Layer):
     """Apply multiple color-related augmentations
 

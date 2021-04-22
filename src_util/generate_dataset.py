@@ -9,7 +9,6 @@ import sys
 import cv2 as cv
 import numpy as np
 import pandas as pd
-import scipy
 from scipy.spatial.distance import cdist
 
 # local
@@ -90,7 +89,7 @@ def cut_out_around_point(img, center_pos, radius=32):
         cropped = img[low_x:high_x, low_y:high_y].copy()  # x,y
     except Exception as ex:
         print(ex)
-        print(img is None, f'{low_x}-{high_x}, {low_y}-{high_y}')
+        print(img is None, '{}-{}, {}-{}'.format(low_x, high_x, low_y, high_y))
         cropped = None
 
     return cropped
@@ -118,8 +117,9 @@ def images_to_dataset(do_foreground=True, do_background=True, val=False, region_
 
     # in/out folders
     input_folder = 'sirky' + '_val' * val
-    run_params = f'{region_side}x_{scale_percentage:03d}s_{per_image_samples}bg'
+
     if output_folder is None:
+        run_params = '{}x_{:03d}s_{}bg'.format(region_side, scale_percentage, per_image_samples)
         output_path = 'datasets' + os.sep + run_params + '_val' * val
     else:
         output_path = output_folder
@@ -135,7 +135,7 @@ def images_to_dataset(do_foreground=True, do_background=True, val=False, region_
 
     if not os.path.isdir(output_path):
         os.makedirs(output_path, exist_ok=True)
-    print(f'saving to {output_path}')
+    print('saving to', output_path)
 
     labels = load_labels_dict(labels_file, use_full_path=False)
 
@@ -170,7 +170,7 @@ def images_to_dataset(do_foreground=True, do_background=True, val=False, region_
 
                     # save image
                     filename_no_suffix = file.split('.')[0]
-                    region_filename = f'{filename_no_suffix}_({label_pos[0]},{label_pos[1]}).jpg'
+                    region_filename = '{}_({},{}).jpg'.format(filename_no_suffix, label_pos[0], label_pos[1])
 
                     tmp = cv.imwrite(category_folder + os.sep + region_filename, region)
 
@@ -243,7 +243,7 @@ def images_to_dataset(do_foreground=True, do_background=True, val=False, region_
                     x, y = (pos / scale).astype(np.intc)
 
                     filename_no_suffix = file.split('.')[0]
-                    region_filename = f'{filename_no_suffix}_({x},{y}).jpg'
+                    region_filename = '{}_({},{}).jpg'.format(filename_no_suffix, x, y)
 
                     cv.imwrite(region_path + region_filename, region_background)
                     out_csv.writerow(['background', x, y, file, orig_size[0], orig_size[1]])

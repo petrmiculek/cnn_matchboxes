@@ -52,9 +52,9 @@ def timing(f):
         start = time()
         result = f(*args, **kwargs)
         end = time()
-        print(f'func:{f.__name__!r} ', end='')
-        # print(f'args:[{args!r}, {kwargs!r}] :', end='')
-        print(f'{end - start:2.4f} sec')
+        print('func:{!r} '.format(f.__name__), end='')
+        print('args:[{!r}, {!r}] :'.format(args, kwargs), end='')
+        print('{:2.4f} sec'.format(end - start))
         return result
 
     return wrap

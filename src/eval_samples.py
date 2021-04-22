@@ -193,7 +193,6 @@ def evaluate_model(model, dataset, val=False, output_location=None, show=False, 
     except TypeError as err:
         # false predictions is a scalar
         print(err)
-        print(f'{false_predictions=}')
         accuracy = 100.0
 
     print('\tAccuracy: {0:0.3g}%'.format(accuracy))
@@ -302,8 +301,6 @@ def show_layer_activations(model, data_augmentation, ds, show=True, output_locat
             plt.show()
 
         plt.close(fig.figure)
-
-        # print(f'{layer_name}: {out_of_range_count=} / {total_count}')
 
 
 def show_augmentation(data_augmentation, dataset):

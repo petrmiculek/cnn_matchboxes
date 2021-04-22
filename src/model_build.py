@@ -10,14 +10,13 @@ import tensorflow as tf
 from tensorflow.keras.callbacks import \
     TensorBoard, ReduceLROnPlateau, \
     LearningRateScheduler, ModelCheckpoint
+from tensorflow.python.keras import Input
+from tensorflow.python.keras.layers import \
+    RandomFlip, RandomRotation, RandomZoom, \
+    CenterCrop, RandomTranslation
 
 # local
-from tensorflow.python.keras import Input
-from tensorflow.python.keras.layers import RandomFlip, Resizing, RandomRotation, RandomZoom, CenterCrop
-
-
 import model_util
-import models
 import config
 
 
@@ -61,7 +60,7 @@ def load_model(model_name, load_weights=True):
 
 def get_callbacks():
     """ TensorBoard loggging """
-    config.run_logs_dir = os.path.join('logs', f'bg{config.dataset_size}', config.model_name)
+    config.run_logs_dir = os.path.join('logs', 'bg{}'.format(config.dataset_size), config.model_name)
     os.makedirs(config.run_logs_dir, exist_ok=True)
     file_writer = tf.summary.create_file_writer(config.run_logs_dir + "/metrics")
     file_writer.set_as_default()
@@ -121,16 +120,17 @@ def augmentation(aug_level=1, crop_to=64, ds_dim=64):
     RandomZoom
     A positive value means zooming out, while a negative value means zooming in.
 
-    :param aug_level:
-    :param crop_to:
-    :param ds_dim:
-    :return:
+    :param aug_level: augmentation level 0, 1, 2, 3
+    :param crop_to: output dimension == native base_model input dimension
+    :param ds_dim: input dimension == dataset dimension
+    :return: Keras sequential model
     """
     if ds_dim < crop_to:
         raise ValueError('E: Augmentation: Dataset dim ({}) smaller than target dim ({})'.format(ds_dim, crop_to))
 
     if aug_level > 0 and ds_dim == crop_to:
-        warnings.warn('W: Augmentation: Model input and output dimensions are the same. \nAugmentation may create artifacts around image edges (e.g. black corners)')
+        warnings.warn('W: Augmentation: Model input and output dimensions are the same.' +
+                      '\nAugmentations may create artifacts around image edges (e.g. black corners)')
 
     aug_model = tf.keras.Sequential(name='augmentation')
     aug_model.add(Input(shape=(ds_dim, ds_dim, 3)))
@@ -138,15 +138,18 @@ def augmentation(aug_level=1, crop_to=64, ds_dim=64):
     e = sys.float_info.epsilon
 
     # parameters for augmentation-levels 0..3
-    rotation = 1 / 16  # =rot22.5°
     brightness = [0.0, 0.1, 0.3, 0.5]
     contrast = [(1.0, 1.0 + e), (0.75, 1.25), (0.5, 1.5), (0.35, 2.0)]
     hue = [0, 0.1, 0.2, 0.4]  # ok
     saturation = [(1.0, 1.0 + e), (0.75, 1.25), (0.5, 1.5), (0.1, 1.5)]
     zoom = [(0.0, 0.0 + e), (-0.1, +0.1), (-0.25, 0.25), (-0.5, +0.5)]
+    # aug-level independent parameters
+    rotation = 1 / 16  # =rot22.5°
+    translation = 4 / 64  # e.g. 4 pixels for a 64x model
 
     if aug_level > 0:
         aug_model.add(RandomFlip("horizontal"))
+        aug_model.add(RandomTranslation(translation, translation, fill_mode='constant'))
         aug_model.add(RandomRotation(rotation))
         aug_model.add(model_util.RandomColorDistortion(brightness_delta=brightness[aug_level],
                                                        contrast_range=contrast[aug_level],

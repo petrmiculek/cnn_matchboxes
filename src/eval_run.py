@@ -49,7 +49,8 @@ if __name__ == '__main__':
     # callbacks = model_ops.get_callbacks()
     config.epochs_trained = 123  #
 
-    dataset_dir = f'/data/datasets/{config.dataset_dim}x_{int(100 * config.scale):03d}s_{config.dataset_size}bg'
+    dataset_dir = '/data/datasets/{}x_{:03d}s_{}bg'\
+        .format(config.dataset_dim, int(100 * config.scale), config.dataset_size)
 
     val_ds, _, _ = get_dataset(dataset_dir + '_val')
     train_ds, config.class_names, _ = get_dataset(dataset_dir)

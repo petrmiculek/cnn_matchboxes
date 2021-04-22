@@ -20,7 +20,7 @@ from scipy.spatial import cKDTree
 from scipy.spatial.distance import cdist
 
 # local
-from labels import load_labels
+from labels import load_labels, resize_labels
 
 
 def delaunay(points):
@@ -76,7 +76,7 @@ def double_voronoi(points):
 
         plt.xlim(-0.5, 1000.5)
         plt.ylim(-0.5, 1000.5)
-        plt.title(f'{r=}')
+        plt.title('r={}'.format(r))
         plt.show()
 
 
@@ -117,7 +117,7 @@ def connect_overlay(points_cv, img_rgb, th):
     # img_plus_net = np.clip(img_rgb // 4 + net[:, :, None], 0, 255).astype(np.uint8)
     img_plus_net = net
     plt.imshow(img_plus_net)
-    plt.title(f'{th=}')
+    plt.title('th=', th)
     # plt.axis(False)
     plt.show()
 
@@ -258,21 +258,21 @@ def consensus(arr):
     count, votes = np.unique(arr, return_counts=True)
     count_voted = count[votes == votes.max()].mean()
     # count_avg = sum(arr) / len(arr)
-    # print(f'{count_avg=}, {count_voted=}')
+    # print('count_avg', count_avg)
+    print('count_voted', count_voted)
     return count_voted
 
 
 if __name__ == '__main__':
     """ Load points """
     input_folder = 'sirky_val'
-    labels = load_labels(f'{input_folder}/labels.csv', use_full_path=False, keep_bg=False)
+    labels_path = os.path.join(input_folder, 'labels.csv')
+    labels = load_labels(labels_path, use_full_path=False, keep_bg=False)
 
     scale = 0.25
+    labels = resize_labels(labels, scale, model_crop_delta=63, center_crop_fraction=0.5)
 
-    labels.x = (labels.x * scale).astype(np.intc)
-    labels.y = (labels.y * scale).astype(np.intc)
-
-    counts_gt = pd.read_csv('sirky/count.txt',
+    counts_gt = pd.read_csv(os.path.join('sirky', 'count.txt'),  # todo fixed count gt folder
                             header=None,
                             names=['image', 'cnt'],
                             dtype={'image': str, 'cnt': np.int32})
@@ -542,14 +542,14 @@ if __name__ == '__main__':
             # counting points needs to use also intersection categories
             # instead of all points, also just pass categories accordingly
 
-            total = (count_x + 1) * (count_y + 1) * (count_z + 1)
+            pred_total = (count_x + 1) * (count_y + 1) * (count_z + 1)
             # +2 corners per dim,
             # -1 because line edges = (vertices - 1)
 
-            print(f'{total=}')
+            print('pred =', pred_total)
             gt = np.array(counts_gt[counts_gt.image == file].cnt)[0]
-            if gt != total:
-                print(f'wrong: {gt=}')
+            if gt != pred_total:
+                print('wrong, gt =', gt)
 
             # except Exception as ex:
             #     print(ex)

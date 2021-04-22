@@ -67,7 +67,8 @@ def run(model_builder, hparams):
     # for batch-running
     # if True:
     try:
-        dataset_dir = f'/data/datasets/{config.dataset_dim}x_{int(100 * config.scale):03d}s_{config.dataset_size}bg'
+        dataset_dir = '/data/datasets/{}x_{:03d}s_{}bg' \
+            .format(config.dataset_dim, int(100 * config.scale), config.dataset_size)
         print('Loading dataset from:', dataset_dir)
         config.checkpoint_path = get_checkpoint_path()
 
@@ -214,7 +215,7 @@ def run(model_builder, hparams):
 
 
 def tf_init():
-    print(f'{tf.__version__=}')
+    print('tf version =', tf.__version__)
     gpus = tf.config.list_physical_devices('GPU')
     if len(gpus) == 0:
         print('no GPU available')
