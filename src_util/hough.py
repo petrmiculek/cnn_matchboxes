@@ -17,6 +17,7 @@ import skimage
 from scipy.spatial import Voronoi, voronoi_plot_2d
 from scipy.spatial import Delaunay
 from scipy.spatial import cKDTree
+from scipy.spatial import ConvexHull, convex_hull_plot_2d
 from scipy.spatial.distance import cdist
 
 # local
@@ -408,8 +409,6 @@ if __name__ == '__main__':
         if len(pts_top) != 4:
             print('skipping - need 4 top points')
             continue
-
-        from scipy.spatial import ConvexHull, convex_hull_plot_2d
 
         hull = ConvexHull(pts_top)
 

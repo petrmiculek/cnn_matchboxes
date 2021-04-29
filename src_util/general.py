@@ -70,7 +70,7 @@ def safestr(*args):
     return "".join(c for c in string if c.isalnum() or c in keepcharacters).rstrip().replace(' ', '_')
 
 
-class DuplicateStream(object):
+class DuplicateStream:
     """Make stream double-ended, outputting to stdout and a file
 
     http://www.tentech.ca/2011/05/stream-tee-in-python-saving-stdout-to-file-while-keeping-the-console-alive/

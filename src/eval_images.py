@@ -130,19 +130,21 @@ def mean_square_error_pixelwise(predictions, img_path, file_labels):
 
         Center crop fraction also makes it easier.
 
-    todo calculate MSE from prediction probability instead of argmax
 
     for all prediction-pixels:
-        non-background: distance to closest keypoint of given class ^ 2
+        non-background: square distance to the closest keypoint of given class
                         if no GT keypoint of given category present, fixed penalty
 
         background: 0.0, if distance to nearest keypoint > min_dist_background
                     else fixed penalty
 
+    :return: MSE sum over categories (mean weighted by category support),
+             MSE per category (weighted by category support)
+
     """
     min_dist_background = 2.0
     min_dist_background_penalty = 1e3
-    no_such_cat_penalty = 1e6  # predicted category not present in GT
+    no_such_cat_penalty = 1e3  # predicted category not present in GT
 
     # make prediction one-hot over channels
     pred_argmax = np.argmax(predictions, axis=2)
@@ -150,7 +152,8 @@ def mean_square_error_pixelwise(predictions, img_path, file_labels):
     # grid for calculating distances
     grid = grid_like(predictions.shape[1], predictions.shape[0])
 
-    mse_categories = {}
+    mse_categories = []
+    support = []
 
     """ background """
     if False:
@@ -161,18 +164,20 @@ def mean_square_error_pixelwise(predictions, img_path, file_labels):
 
         min_pred_dist = np.min(distances, axis=1)  # distance from predicted bg pixel to nearest GT keypoint
         penalized = min_pred_dist[min_pred_dist < min_dist_background]
-        mse_categories['background'] = min_dist_background_penalty * len(penalized) / config.scale ** 2
+        mse_categories.append(min_dist_background_penalty * len(penalized))
     else:
         # background ignored for its negligible value and high computation cost
-        mse_categories['background'] = 0.0
+        mse_categories.append(0.0)
+        support.append(0)
 
     """ keypoint categories """
     for i, cat in enumerate(config.class_names[1:], start=1):  # skip 0 == background
         # filter only predictions of given category
         cat_list = grid[pred_argmax == i]
 
+        support.append(len(cat_list))
         if cat not in file_labels.category.values:
-            mse_categories[cat] = len(cat_list) * no_such_cat_penalty / config.scale ** 2
+            mse_categories.append(len(cat_list) * no_such_cat_penalty)
             continue
 
         # distance of each predicted point to each GT label
@@ -180,16 +185,32 @@ def mean_square_error_pixelwise(predictions, img_path, file_labels):
         cat_labels = cat_labels[['x', 'y']].to_numpy()
         distances = np.square(cdist(cat_list, cat_labels))
         square_error = np.min(distances, axis=1)
+        if len(square_error) == 0:
+            # false negative, cannot evaluate per pixel, ignored
+            square_error = 0
 
-        mse_categories[cat] = np.sum(square_error) / config.scale ** 2
+        mse_categories.append(np.mean(square_error))
 
-    mse_categories_list = list(mse_categories.values())
-    mse_sum = np.sum(mse_categories_list)
+    mse_categories = np.array(mse_categories)
+    support = np.array(support)
+
+    mse_categories /= config.scale ** 2  # normalizing factor
+
+    mse_categories = mse_categories * support / np.sum(support)
+    mse_sum = np.sum(mse_categories)
 
     # log to csv
-    log_mean_square_error_csv(config.model_name, img_path, mse_sum, mse_categories_list)
+    log_mean_square_error_csv(config.model_name, img_path, mse_sum, mse_categories)
 
-    return mse_sum, mse_categories
+    """
+    output:
+    
+    total: sum(total_square_error * support)
+    per_category: total_square_error * support / sum(support)
+    
+    """
+    mse_dict = dict(zip(config.class_names, mse_categories))
+    return mse_sum, mse_dict
 
 
 def full_prediction(base_model, file_labels, img_path, output_location=None,
@@ -244,8 +265,8 @@ def full_prediction(base_model, file_labels, img_path, output_location=None,
             point_mse, mse_categories, count_mae = mean_square_error_pointwise(predictions, file_labels, show=show)
 
             category_titles = ['{}: {:.1e}'.format(cat, cat_mse) for cat, cat_mse in
-                               mse_categories.items()]
-            plots_title = 'dist_mse: {:.1e}, count_mae: {:0.2g}'.format(point_mse, count_mae)
+                               mse_pix_categories.items()]
+            plots_title = 'pix_mse: {:.1e}, dist_mse: {:.1e}, count_mae: {:0.2g}'.format(pix_mse, point_mse, count_mae)
 
             # show_mse_pixelwise_location(predictions, img, img_path, file_labels, output_location=output_location,
             #                             show=False)
@@ -272,8 +293,8 @@ def full_prediction_all(base_model, val=True,
         output_location = os.path.join(output_location, 'heatmaps')
         os.makedirs(output_location, exist_ok=True)
 
-    point_mse_list = []
     pix_mse_list = []
+    point_mse_list = []
     count_mae_list = []
     for file in pd.unique(labels['image']):
         file_labels = labels[labels.image == file]
@@ -316,7 +337,6 @@ def mean_square_error_pointwise(predictions, file_labels, show=False):
         return mse_val
 
     # show = False
-
 
     prediction_threshold = 0.9
     min_blob_size = 160 * config.scale ** 2
@@ -405,7 +425,7 @@ def mean_square_error_pointwise(predictions, file_labels, show=False):
 
     if show:
         fig.legend(['ground-truth', 'prediction'])
-        if len(pts_pred) > 0:
+        if len(pts_pred) > 0 and np.array(pts_pred).ndim == 2:
             axes[2, 2].scatter(pts_pred[:, 0], pts_pred[:, 1], marker='*', color='r')
 
         axes[2, 2].set_xlim(0, predictions.shape[1])
@@ -440,12 +460,6 @@ def show_mse_pixelwise_location(predictions, img, img_path, file_labels, output_
     :param file_labels:
     :param show:
     :param output_location:
-
-    inspiration for grid operations (4-th answer):
-    https://stackoverflow.com/questions/36013063/what-is-the-purpose-of-meshgrid-in-python-numpy
-
-    idea: grid distance to keypoint could be cached and loaded from a pickle
-
     """
     if not show and output_location is None:
         return

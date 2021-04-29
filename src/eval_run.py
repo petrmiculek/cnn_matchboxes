@@ -2,6 +2,8 @@
 import os
 
 # external
+import sys
+
 import tensorflow as tf
 import numpy as np
 import pandas as pd
@@ -20,11 +22,9 @@ if __name__ == '__main__':
     config.train = False
     config.dataset_size = 1000
     config.center_crop_fraction = 0.5
-
     # depends on model
     # train dim decided by model
-    config.scale = 0.25
-    config.dataset_dim = 64
+    config.scale = 0.5
 
     # should not matter
     config.augment = True
@@ -37,13 +37,17 @@ if __name__ == '__main__':
     # load_model_name = 'dilated_64x_exp2_2021-03-27-06-36-50_full'  # /data/datasets/128x_050s_500bg
     # load_model_name = 'dilated_32x_exp22021-03-28-16-38-11_full'  # /data/datasets/64x_050s_500bg
     # load_model_name = 'dilated_64x_exp2_2021-03-29-15-58-47_full'  # /data/datasets/128x_050s_1000bg
-    load_model_name = '32x_d3-5-7-1-1_2021-04-19-14-25-48_full'  # /data/datasets/64x_025s_1000bg
+    # load_model_name = '32x_d3-5-7-1-1_2021-04-19-14-25-48_full'  # /data/datasets/64x_025s_1000bg
+    load_model_name = '64x_d1-3-5-7-9-11-1-1_2021-04-23-14-10-33_full'  # /data/datasets/128x_050s_1000bg
     config.model_name = load_model_name + '_reloaded'
-    for dim in [32, 64, 128]:
-        if '{}x'.format(dim) in load_model_name:
-            config.train_dim = dim
-            config.dataset_dim = 2 * dim
-            break
+
+    try:
+        dim = int(load_model_name.split('x_')[0])
+        config.train_dim = dim
+        config.dataset_dim = 2 * dim
+    except IndexError:
+        print('', file=sys.stderr)
+        dim = 64
 
     base_model, model, aug_model = model_build.load_model(load_model_name, load_weights=True)
     # callbacks = model_ops.get_callbacks()
@@ -72,3 +76,26 @@ if __name__ == '__main__':
 
         show_layer_activations(base_model, aug_model, val_ds, show=False,
                                        output_location=config.output_location)
+
+
+    if False:
+
+        output_location = 'scale_comparison'
+        os.makedirs(output_location, exist_ok=True)
+        config.show = False
+        show = False
+        for s in np.arange(start=0.25, stop=1.26, step=0.125):
+            print(s)
+
+            config.center_crop_fraction = 0.2
+            config.scale = s
+
+            images_dir = 'sirky' + '_val' * val
+            labels = load_labels(images_dir + os.sep + 'labels.csv', use_full_path=False, keep_bg=False)
+            labels = resize_labels(labels, config.scale, config.train_dim - 1, config.center_crop_fraction)
+
+            file_labels = labels[labels.image == file]
+            pix_mse, point_mse, count_mae = \
+                full_prediction(base_model, file_labels, img_path=images_dir + os.sep + file,
+                                output_location=output_location, show=show,
+                                undecided_only=undecided_only, maxes_only=maxes_only)

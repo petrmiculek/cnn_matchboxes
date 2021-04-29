@@ -306,3 +306,11 @@ def recipe_73x_odd():
 
     return kernels, dilations, widths
 
+
+def recipe_99x_odd():
+    dilations = [1, 3, 5, 7, 9, 11, 13, 1]
+    kernels = [3, 3, 3, 3, 3, 3, 3, 1]
+    widths = [2, 2, 4, 4, 8, 8, 8, 8]
+
+    return kernels, dilations, widths
+

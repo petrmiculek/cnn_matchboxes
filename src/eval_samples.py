@@ -191,7 +191,7 @@ def evaluate_model(model, dataset, val=False, output_location=None, show=False, 
     try:
         accuracy = 100.0 * (1 - len(false_predictions) / len(predictions))
     except TypeError as err:
-        # false predictions is a scalar
+        # false predictions == []
         print(err)
         accuracy = 100.0
 

@@ -145,11 +145,12 @@ def augmentation(aug_level=1, crop_to=64, ds_dim=64):
     zoom = [(0.0, 0.0 + e), (-0.1, +0.1), (-0.25, 0.25), (-0.5, +0.5)]
     # aug-level independent parameters
     rotation = 1 / 16  # =rot22.5°
-    translation = 4 / 64  # e.g. 4 pixels for a 64x model
+    translation = [0, 1 / 64, 2 / 64, 4 / 64, 6/64, 8/64]  # e.g. 4 pixels for a 64x model
 
     if aug_level > 0:
         aug_model.add(RandomFlip("horizontal"))
-        aug_model.add(RandomTranslation(translation, translation, fill_mode='constant'))
+        aug_model.add(RandomTranslation(translation[aug_level], translation[aug_level]))
+        # aug_level = 2
         aug_model.add(RandomRotation(rotation))
         aug_model.add(model_util.RandomColorDistortion(brightness_delta=brightness[aug_level],
                                                        contrast_range=contrast[aug_level],

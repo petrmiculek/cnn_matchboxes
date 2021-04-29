@@ -101,20 +101,6 @@ class F1(tfa.metrics.F1Score):
         return super(F1, self).update_state(y_true, y_pred_reshaped, sample_weight)
 
 
-# https://datascience.stackexchange.com/questions/48246/how-to-compute-f1-in-tensorflow
-# unused
-def f1_metric(y_true, y_pred):
-    """Unused"""
-    true_positives = tf.cast(K.sum(K.round(K.clip(y_true * y_pred, 0, 1))), dtype=tf.float32)
-    possible_positives = tf.cast(K.sum(K.round(K.clip(y_true, 0, 1))), dtype=tf.float32)
-    predicted_positives = tf.cast(K.sum(K.round(K.clip(y_pred, 0, 1))), dtype=tf.float32)
-    precision = true_positives / (predicted_positives + K.epsilon())
-    recall = true_positives / (possible_positives + K.epsilon())
-    f1_val = 2 * (precision * recall) / (precision + recall + K.epsilon())
-    tf.print(precision, recall, f1_val)
-    return f1_val
-
-
 class AUC(tf.keras.metrics.AUC):
     """Calculate PR-value metric
 
@@ -149,6 +135,7 @@ class MSELogger(tf.keras.callbacks.Callback):
             pix_mse_train, dist_mse_train, count_mae_train = full_prediction_all(base_model, val=False,
                                                                                  output_location=None, show=False)
 
+            print('pix_mse:', exp_form(pix_mse_train), exp_form(pix_mse_val))
             print('dist_mse:', exp_form(dist_mse_train), exp_form(dist_mse_val))
             print('count_mae: {:0.2g} {:0.2g}'.format(count_mae_train, count_mae_val))
 
