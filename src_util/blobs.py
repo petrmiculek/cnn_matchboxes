@@ -138,9 +138,6 @@ if __name__ == '__main__':
         file_names.append(file)
         file_labels = labels[labels.image == img_file_name]
 
-        # if '121303' in img_file_name:
-        #     raise ValueError()
-
         print(img_file_name)
 
         mse_cat_dict = {}

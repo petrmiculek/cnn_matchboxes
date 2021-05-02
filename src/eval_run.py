@@ -39,15 +39,21 @@ if __name__ == '__main__':
     # load_model_name = 'dilated_64x_exp2_2021-03-29-15-58-47_full'  # /data/datasets/128x_050s_1000bg
     # load_model_name = '32x_d3-5-7-1-1_2021-04-19-14-25-48_full'  # /data/datasets/64x_025s_1000bg
     load_model_name = '64x_d1-3-5-7-9-11-1-1_2021-04-23-14-10-33_full'  # /data/datasets/128x_050s_1000bg
+    load_model_name = '99x_d1-3-5-7-9-11-13-1_2021-04-29-11-43-25_full'  # /data/datasets/128x_050s_1000bg
     config.model_name = load_model_name + '_reloaded'
 
     try:
         dim = int(load_model_name.split('x_')[0])
-        config.train_dim = dim
-        config.dataset_dim = 2 * dim
     except IndexError:
         print('', file=sys.stderr)
         dim = 64
+
+    config.train_dim = dim
+    config.dataset_dim = 2 * dim
+
+    # overwriting for 99x model todo
+    config.train_dim = 99
+    config.dataset_dim = 128
 
     base_model, model, aug_model = model_build.load_model(load_model_name, load_weights=True)
     # callbacks = model_ops.get_callbacks()
@@ -79,7 +85,7 @@ if __name__ == '__main__':
 
 
     if False:
-
+        # comparing predictions at multiple scales
         output_location = 'scale_comparison'
         os.makedirs(output_location, exist_ok=True)
         config.show = False
@@ -91,11 +97,16 @@ if __name__ == '__main__':
             config.scale = s
 
             images_dir = 'sirky' + '_val' * val
-            labels = load_labels(images_dir + os.sep + 'labels.csv', use_full_path=False, keep_bg=False)
-            labels = resize_labels(labels, config.scale, config.train_dim - 1, config.center_crop_fraction)
+            file = os.listdir(images_dir)[-1]
 
-            file_labels = labels[labels.image == file]
-            pix_mse, point_mse, count_mae = \
-                full_prediction(base_model, file_labels, img_path=images_dir + os.sep + file,
-                                output_location=output_location, show=show,
-                                undecided_only=undecided_only, maxes_only=maxes_only)
+            for ccf in np.arange(0.10, 1.05, 0.05):
+                config.center_crop_fraction = ccf
+                print(ccf)
+
+                labels = load_labels(images_dir + os.sep + 'labels.csv', use_full_path=False, keep_bg=False)
+                labels = resize_labels(labels, config.scale, config.train_dim - 1, config.center_crop_fraction)
+
+                file_labels = labels[labels.image == file]
+                pix_mse, point_mse, count_mae = \
+                    full_prediction(base_model, file_labels, img_path=images_dir + os.sep + file,
+                                    output_location=output_location, show=show)

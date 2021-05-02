@@ -63,6 +63,7 @@ def run(model_builder, hparams):
         config.batch_size = 128
 
     hard_mining = False
+    print({h: hparams[h] for h in hparams})
 
     # for batch-running
     # if True:
@@ -105,7 +106,6 @@ def run(model_builder, hparams):
         sys.stdout = DuplicateStream(sys.stdout, out_stream)
 
         log_model_info(model, config.output_location)
-        print({h: hparams[h] for h in hparams})
 
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
         tf.get_logger().setLevel('ERROR')  # suppress warnings about early-stopping and model-checkpoints

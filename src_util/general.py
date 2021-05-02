@@ -40,7 +40,7 @@ def timing(f):
 
     Use as a @timing decorator or timing(foo)(args)
 
-    Taken from
+    Taken from:
     https://stackoverflow.com/questions/1622943/timeit-versus-timing-decorator
 
     :param f:
@@ -62,7 +62,6 @@ def timing(f):
 
 def safestr(*args):
     """Turn string into a filename
-    https://stackoverflow.com/questions/7406102/create-sane-safe-filename-from-any-unsafe-string
     :return: sanitized filename-safe string
     """
     string = str(args)
@@ -73,8 +72,8 @@ def safestr(*args):
 class DuplicateStream:
     """Make stream double-ended, outputting to stdout and a file
 
+    Taken from:
     http://www.tentech.ca/2011/05/stream-tee-in-python-saving-stdout-to-file-while-keeping-the-console-alive/
-    Based on https://gist.github.com/327585 by Anand Kunal
 
     """
 

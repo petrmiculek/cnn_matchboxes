@@ -128,3 +128,11 @@ def tile(arr, nrows, ncols):
             .reshape((nrows, ncols, h, w))
             .swapaxes(1, 2)
             .reshape(out_height, out_width))
+
+
+def plot_mse_history():
+    import pandas as pd
+    import os
+    import matplotlib.pyplot as plt
+
+    history = pd.read_csv(os.path.join('outputs', 'losses_sum.csv'))

@@ -31,7 +31,7 @@ if __name__ == '__main__':
 
     #   14-15 overnight
     # model_kwargs = {'skip_branch_conv': False}
-    # run(residual_64x, model_kwargs, use_small_ds=False, augment=False)
+    # run(residual_64x, use_small_ds=False, augment=True)
     #
     # run(residual_64x, use_small_ds=False, augment=True)
     #
@@ -140,7 +140,7 @@ if __name__ == '__main__':
     config.train = True
     # train dim decided by model
     config.dataset_dim = 128
-    config.augment = True
+    config.augment = 2
     config.use_weights = False
     config.show = False
     config.scale = 0.25
@@ -194,7 +194,6 @@ if __name__ == '__main__':
             }
             run(m, hparams)
     """
-
     """
     for m in [parameterized(recipe_64x_odd),
               parameterized(recipe_64x_basic),
@@ -211,7 +210,6 @@ if __name__ == '__main__':
             }
             run(m, hparams)
     """
-    #
     # config.dataset_dim = 64
     # config.epochs = 75
     """
@@ -230,7 +228,6 @@ if __name__ == '__main__':
                     }
                     run(m, hparams)
     """
-
     """
 
     for m in [parameterized(recipe_32x_d7531),
@@ -247,11 +244,11 @@ if __name__ == '__main__':
             run(m, hparams)
 
     """
-
+    """
     # config.epochs = 50
     # config.dataset_dim = 128
     # config.scale = 0.25
-    # config.batch_size = 64  # todo try
+    # config.batch_size = 64
 
     # for m in [parameterized(recipe_64x_odd)]:
     #     # for scale in hp_scale.domain.values:
@@ -264,7 +261,7 @@ if __name__ == '__main__':
     #             'crop_fraction': config.center_crop_fraction,
     #         }
     #         run(m, hparams)
-
+    """
     """
     for m in [parameterized(recipe_64x_odd)]:
         for width in hp_base_width.domain.values:
@@ -279,8 +276,6 @@ if __name__ == '__main__':
                 }
                 run(m, hparams)
     """
-
-    # """
     """
 
     config.dataset_dim = 64
@@ -312,31 +307,32 @@ if __name__ == '__main__':
                     run(model, hparams)
                     
     """
+    """
+    models = [
+        # parameterized(recipe_32x_odd),
+        parameterized(recipe_32x_exp2),
+        parameterized(recipe_32x_flat5),
+        parameterized(recipe_32x_d1to5),
+              ]
 
-    # models = [
-    #     # parameterized(recipe_32x_odd),
-    #     parameterized(recipe_32x_exp2),
-    #     parameterized(recipe_32x_flat5),
-    #     parameterized(recipe_32x_d1to5),
-    #           ]
-    #
-    # # for crop_fraction in hp_crop_fraction.domain.values:
-    # for model in models:
-    #     for aug_level in [1]:
-    #         for scale in hp_scale.domain.values:
-    #             for width in [16]:
-    #                 config.scale = scale
-    #                 config.augment = aug_level
-    #                 hparams = {
-    #                     'base_width': width,
-    #                     'class_weights': 'none',
-    #                     'aug_level': aug_level,
-    #                     'ds_bg_samples': config.dataset_size,
-    #                     'scale': scale,
-    #                     'crop_fraction': config.center_crop_fraction,
-    #                 }
-    #                 run(model, hparams)
-
+    # for crop_fraction in hp_crop_fraction.domain.values:
+    for model in models:
+        for aug_level in [1]:
+            for scale in hp_scale.domain.values:
+                for width in [16]:
+                    config.scale = scale
+                    config.augment = aug_level
+                    hparams = {
+                        'base_width': width,
+                        'class_weights': 'none',
+                        'aug_level': aug_level,
+                        'ds_bg_samples': config.dataset_size,
+                        'scale': scale,
+                        'crop_fraction': config.center_crop_fraction,
+                    }
+                    run(model, hparams)
+    """
+    """
     config.dataset_dim = 128
     config.scale = 0.25
     config.epochs = 75
@@ -358,8 +354,9 @@ if __name__ == '__main__':
                 'crop_fraction': config.center_crop_fraction,
             }
             run(model, hparams)
-
+            
     """
+    """    
     # config.dataset_dim = 64
     # m = parameterized(recipe_32x_odd)
 
@@ -374,3 +371,20 @@ if __name__ == '__main__':
 
     }
     """
+    # config.batch_size = 128
+    config.epochs = 50
+    m = parameterized(recipe_64x_odd)
+    for s in hp_scale.domain.values:
+        for ccf in [0.5, 1.0]:
+            config.scale = s
+            config.center_crop_fraction = ccf
+
+            hparams = {
+                'base_width': 16,
+                'class_weights': 'none',
+                'aug_level': 2,
+                'ds_bg_samples': config.dataset_size,
+                'scale': config.scale,
+                'crop_fraction': config.center_crop_fraction,
+            }
+            run(m, hparams)

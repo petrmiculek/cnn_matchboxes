@@ -116,8 +116,8 @@ def grid_like(x, y):
     return grid
 
 
-def mean_square_error_pixelwise(predictions, img_path, file_labels):
-    """Calculate MSE metric for full-image prediction
+def mse_pixelwise(predictions, img_path, file_labels):
+    """Calculate pixel-wise MSE metric for full-image prediction
 
     Metric is calculated per-pixel.
     Consequences:
@@ -196,7 +196,8 @@ def mean_square_error_pixelwise(predictions, img_path, file_labels):
 
     mse_categories /= config.scale ** 2  # normalizing factor
 
-    mse_categories = mse_categories * support / np.sum(support)
+    if len(support) > 0:
+        mse_categories = mse_categories * support / np.sum(support)
     mse_sum = np.sum(mse_categories)
 
     # log to csv
@@ -213,107 +214,7 @@ def mean_square_error_pixelwise(predictions, img_path, file_labels):
     return mse_sum, mse_dict
 
 
-def full_prediction(base_model, file_labels, img_path, output_location=None,
-                    show=True, maxes_only=False, undecided_only=False):
-    """Show predicted heatmaps for full image
-
-    :param base_model:
-    :param file_labels:
-    :param img_path:
-    :param output_location:
-    :param show:
-    :param maxes_only: Show only the top predicted category per point.
-    :param undecided_only: Show only predictions that were
-    """
-
-    img, orig_size = load_image(img_path, config.scale, config.center_crop_fraction)
-
-    predictions = make_prediction(base_model, img, maxes_only, undecided_only)
-
-    # todo
-    # temporary - save predictions
-    # os.makedirs('preds', exist_ok=True)
-    # preds_file_path = os.path.join('preds', img_path.split('/')[-1] + '.npy')
-    #
-    # with open(preds_file_path, 'wb') as f:
-    #     noinspection PyTypeChecker
-    #     np.save(f, predictions)
-
-    # Model prediction is cropped, adjust image accordingly
-    img, model_crop_delta = crop_to_prediction(img, predictions.shape)
-
-    category_titles = config.class_names
-
-    pix_mse = -1
-    point_mse = -1
-    count_mae = np.nan
-    if undecided_only:
-        plots_title = 'undecided'
-    elif maxes_only:
-        plots_title = 'maxes'
-    else:
-        # try:
-        if True:
-            # pixel-wise
-            pix_mse, mse_pix_categories = mean_square_error_pixelwise(predictions, img_path, file_labels)
-
-            # category_titles = ['{}: 1e{:0.2g}'.format(cat, log10(cat_mse + 1)) for cat, cat_mse in
-            #                    mse_pix_categories.items()]
-            # plots_title = '{:0.2g}M'.format(mse_pix_total / 1e6)
-
-            # point-wise
-            point_mse, mse_categories, count_mae = mean_square_error_pointwise(predictions, file_labels, show=show)
-
-            category_titles = ['{}: {:.1e}'.format(cat, cat_mse) for cat, cat_mse in
-                               mse_pix_categories.items()]
-            plots_title = 'pix_mse: {:.1e}, dist_mse: {:.1e}, count_mae: {:0.2g}'.format(pix_mse, point_mse, count_mae)
-
-            # show_mse_pixelwise_location(predictions, img, img_path, file_labels, output_location=output_location,
-            #                             show=False)
-        # except Exception as ex:
-        #     plots_title = ''
-        #     print(ex, file=sys.stderr)
-
-    assert len(category_titles) >= 8, '{}, {}, {}'.format(len(category_titles), point_mse, pix_mse)
-    # save_predictions_cv(predictions, img, img_path, output_location)
-    display_predictions(predictions, img, img_path, category_titles, plots_title,
-                        show=show, output_location=output_location, superimpose=True)
-
-    return pix_mse, point_mse, count_mae
-
-
-def full_prediction_all(base_model, val=True,
-                        undecided_only=False, maxes_only=False,
-                        output_location=None, show=True):
-    images_dir = 'sirky' + '_val' * val
-    labels = load_labels(images_dir + os.sep + 'labels.csv', use_full_path=False, keep_bg=False)
-    labels = resize_labels(labels, config.scale, config.train_dim - 1, config.center_crop_fraction)
-
-    if output_location:
-        output_location = os.path.join(output_location, 'heatmaps')
-        os.makedirs(output_location, exist_ok=True)
-
-    pix_mse_list = []
-    point_mse_list = []
-    count_mae_list = []
-    for file in pd.unique(labels['image']):
-        file_labels = labels[labels.image == file]
-        pix_mse, point_mse, count_mae = \
-            full_prediction(base_model, file_labels, img_path=images_dir + os.sep + file,
-                            output_location=output_location, show=show,
-                            undecided_only=undecided_only, maxes_only=maxes_only)
-
-        pix_mse_list.append(pix_mse)
-        point_mse_list.append(point_mse)
-        count_mae_list.append(count_mae)
-
-    pix_mse = np.mean(pix_mse_list)
-    point_mse = np.mean(point_mse_list)
-    count_mae = np.mean(count_mae_list) if len(count_mae_list) > 0 else 0
-    return pix_mse, point_mse, count_mae
-
-
-def mean_square_error_pointwise(predictions, file_labels, show=False):
+def mse_pointwise(predictions, file_labels, show=False):
     def mse_value(pts_gt, pts_pred):
         false_positive_penalty = 1e4
         false_negative_penalty = 1e4
@@ -335,8 +236,6 @@ def mean_square_error_pointwise(predictions, file_labels, show=False):
             mse_val += np.max([0, len(pts_gt) - len(pts_pred)]) * false_negative_penalty
 
         return mse_val
-
-    # show = False
 
     prediction_threshold = 0.9
     min_blob_size = 160 * config.scale ** 2
@@ -421,7 +320,7 @@ def mean_square_error_pointwise(predictions, file_labels, show=False):
         count_error_categories.append(pts_pred_cat.shape[0] - pts_gt_cat.shape[0])
 
     mse_total = np.mean(mse_cat_list)
-    count_mae = np.mean(np.abs(count_error_categories))
+    count_mae = np.sum(np.abs(count_error_categories))
 
     if show:
         fig.legend(['ground-truth', 'prediction'])
@@ -449,6 +348,98 @@ def mean_square_error_pointwise(predictions, file_labels, show=False):
     # print('blob size:', np.mean(blob_sizes).astype(np.int))
 
     return mse_total, mse_cat_dict, count_mae
+
+
+def full_prediction(base_model, file_labels, img_path, output_location=None,
+                    show=True, maxes_only=False, undecided_only=False):
+    """Show predicted heatmaps for full image and evaluate prediction
+
+    :param base_model:
+    :param file_labels:
+    :param img_path:
+    :param output_location:
+    :param show:
+    :param maxes_only: Show only the top predicted category per point.
+    :param undecided_only: Show only predictions that were
+    """
+
+    img, orig_size = load_image(img_path, config.scale, config.center_crop_fraction)
+
+    if min(img.shape[0], img.shape[1]) < config.train_dim:
+        err = f'Image too small for prediction [{img.shape[0]},{img.shape[1]}]\n' + \
+              f'must be at least as big as training dimension = {config.train_dim}\n' + \
+              f'image_path:{img_path}\n'
+        raise UserWarning(err)
+
+    predictions = make_prediction(base_model, img, maxes_only, undecided_only)
+
+    # Model prediction is cropped, adjust image accordingly
+    img, model_crop_delta = crop_to_prediction(img, predictions.shape)
+
+    category_titles = config.class_names
+
+    pix_mse = -1
+    dist_mse = -1
+    count_mae = np.nan
+    if undecided_only:
+        plots_title = 'undecided'
+    elif maxes_only:
+        plots_title = 'maxes'
+    else:
+        try:
+            # pixel-wise
+            pix_mse, pix_mse_categories = mse_pixelwise(predictions, img_path, file_labels)
+
+            # point-wise
+            dist_mse, dist_mse_categories, count_mae = mse_pointwise(predictions, file_labels, show=show)
+
+            category_titles = ['{}: {:.1e}'.format(cat, cat_mse) for cat, cat_mse in
+                               dist_mse_categories.items()]
+            plots_title = 'pix_mse: {:.1e}, dist_mse: {:.1e}, count_mae: {:0.2g}'.format(pix_mse, dist_mse, count_mae)
+
+            show_mse_pixelwise_location(predictions, img, img_path,
+                                        file_labels, output_location=output_location, show=False)
+        except Exception as ex:
+            plots_title = ''
+            print(ex, file=sys.stderr)
+
+    assert len(category_titles) >= 8, '{}, {}, {}'.format(len(category_titles), dist_mse, pix_mse)
+    # save_predictions_cv(predictions, img, img_path, output_location)
+    display_predictions(predictions, img, img_path, category_titles, plots_title,
+                        show=show, output_location=output_location, superimpose=True)
+
+    return pix_mse, dist_mse, count_mae
+
+
+def full_prediction_all(base_model, val=True,
+                        undecided_only=False, maxes_only=False,
+                        output_location=None, show=True):
+    images_dir = 'sirky' + '_val' * val
+    labels = load_labels(images_dir + os.sep + 'labels.csv', use_full_path=False, keep_bg=False)
+    labels = resize_labels(labels, config.scale, config.train_dim - 1, config.center_crop_fraction)
+
+    if output_location:
+        output_location = os.path.join(output_location, 'heatmaps')
+        os.makedirs(output_location, exist_ok=True)
+
+    pix_mse_list = []
+    dist_mse_list = []
+    count_mae_list = []
+    for file in pd.unique(labels['image']):
+        file_labels = labels[labels.image == file]
+        pix_mse, dist_mse, count_mae = \
+            full_prediction(base_model, file_labels, img_path=images_dir + os.sep + file,
+                            output_location=output_location, show=show,
+                            undecided_only=undecided_only, maxes_only=maxes_only)
+
+        pix_mse_list.append(pix_mse)
+        dist_mse_list.append(dist_mse)
+        count_mae_list.append(count_mae)
+
+    pix_mse = np.mean(pix_mse_list)
+    dist_mse = np.mean(dist_mse_list)
+    count_mae = np.mean(count_mae_list) if len(count_mae_list) > 0 else 0
+    return pix_mse, dist_mse, count_mae
 
 
 def show_mse_pixelwise_location(predictions, img, img_path, file_labels, output_location=None, show=True):

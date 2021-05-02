@@ -150,7 +150,6 @@ def augmentation(aug_level=1, crop_to=64, ds_dim=64):
     if aug_level > 0:
         aug_model.add(RandomFlip("horizontal"))
         aug_model.add(RandomTranslation(translation[aug_level], translation[aug_level]))
-        # aug_level = 2
         aug_model.add(RandomRotation(rotation))
         aug_model.add(model_util.RandomColorDistortion(brightness_delta=brightness[aug_level],
                                                        contrast_range=contrast[aug_level],
