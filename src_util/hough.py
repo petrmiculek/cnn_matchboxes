@@ -1,84 +1,21 @@
 # stdlib
 import os
-from collections.abc import Iterable
 
 # external
 import cv2 as cv
 import numpy as np
 import pandas as pd
-from PIL import Image
 import matplotlib.pyplot as plt
 from matplotlib import cm
 from skimage.transform import hough_line, hough_line_peaks
-from skimage.feature import canny
 from skimage.draw import line as draw_line
-from skimage import data
 import skimage
-from scipy.spatial import Voronoi, voronoi_plot_2d
-from scipy.spatial import Delaunay
-from scipy.spatial import cKDTree
-from scipy.spatial import ConvexHull, convex_hull_plot_2d
+from scipy.spatial import ConvexHull
 from scipy.spatial.distance import cdist, cosine
 
 # local
-from labels import load_labels, resize_labels
 from eval_images import crop_to_prediction, load_image
-
-
-def delaunay(points):
-    tri = Delaunay(points)
-    plt.triplot(points[:, 0], points[:, 1], tri.simplices)
-    plt.plot(points[:, 0], points[:, 1], 'o')
-
-    for j, p in enumerate(points):
-        plt.text(p[0] - 0.03, p[1] + 0.03, j, ha='right')
-
-    for j, s in enumerate(tri.simplices):
-        p = points[s].mean(axis=0)
-        plt.text(p[0], p[1], '#%d' % j, ha='center')
-
-    # plt.xlim(-0.5, 1.5)
-    # plt.ylim(-0.5, 1.5)
-    plt.show()
-
-
-def double_voronoi(points):
-    vor = Voronoi(points)
-    fig = voronoi_plot_2d(vor)
-    plt.show()
-    # todo unused, delete
-    # https://stackoverflow.com/questions/36985185/fast-fuse-of-close-points-in-a-numpy-2d-vectorized
-    for r in range(2, 20, 2):
-        v_points = np.array(vor.vertices)
-        tree = cKDTree(v_points)
-        pairs_to_fuse = tree.query_pairs(r=r)
-
-        # print(repr(rows_to_fuse))
-        # print(repr(v_points[list(rows_to_fuse)]))
-
-        # TODO results not disjoint
-        v_points_close = np.vstack([v_points[a] + v_points[b] / 2 for a, b in pairs_to_fuse])
-
-        points_close_indices = np.unique(np.array(list(pairs_to_fuse)).flatten())
-
-        # get inverse indices todo use function
-        mask = np.ones(len(v_points), dtype=np.bool)
-        mask[points_close_indices] = 0
-        v_points_far = v_points[mask]
-
-        v_points_fused = np.vstack([v_points_close, v_points_far])
-
-        # A)
-        # plt.scatter(*v_points_fused.T)
-
-        # B)
-        # plt.scatter(*v_points_close.T)
-        # plt.scatter(*v_points_far.T)
-
-        plt.xlim(-0.5, 1000.5)
-        plt.ylim(-0.5, 1000.5)
-        plt.title('r={}'.format(r))
-        plt.show()
+from labels import load_labels, resize_labels
 
 
 def hough_lines_point_set(points_cv):
@@ -123,7 +60,7 @@ def connect_overlay(points_cv, img_rgb, th):
     plt.show()
 
 
-def get_cat_points(file_labels, cat=None, cv=False):
+def get_gt_points(file_labels, cat=None, cv=False):
     lines = file_labels
     if cat is not None:
         if isinstance(cat, str):
@@ -230,14 +167,6 @@ def count_points_on_line(points, line, dst_th=10, show=False):
 
     p1, p2 = line
 
-    # p3 = next(iter(points_cv))
-
-    # - convex hull wrapper risky for nearly horiz/vert lines
-    # + just manually expand it
-
-    # for pt in points_cv:
-    # dists = np.abs(np.cross(p2 - p1, p1 - pt)) / np.linalg.norm(p2 - p1)
-    # print(pt, dist)
     tolerance = [10, 10]
     low = np.min(line, axis=0) - tolerance
     high = np.max(line, axis=0) + tolerance
@@ -254,8 +183,9 @@ def count_points_on_line(points, line, dst_th=10, show=False):
         plt.scatter(*points.T, marker='o')
         plt.scatter(*wrapper[on_the_line].T, marker='x')
         plt.scatter(*line.T, marker='+')
-        # plt.gca().invert_yaxis()  # if new plot, axis needs to be inverted
-        # disable when using imshow
+        
+        plt.gca().invert_yaxis()  # if new plot, axis needs to be inverted
+        # (disable ^^^ when using imshow)
         plt.show()
 
     return len(on_the_line)
@@ -264,9 +194,6 @@ def count_points_on_line(points, line, dst_th=10, show=False):
 def consensus(arr):
     count, votes = np.unique(arr, return_counts=True)
     count_voted = count[votes == votes.max()].mean()
-    # count_avg = sum(arr) / len(arr)
-    # print('count_avg', count_avg)
-    # print('count_voted', count_voted)
     return count_voted
 
 
@@ -293,8 +220,131 @@ def get_top_back_point(pts_bottom, pts_top):
     return np.argmax(scores)
 
 
-if __name__ == '__main__':
-    """ Load points """
+def ordered_along_line(points, line_end, line_start=np.array([0, 0])):
+    side_size2 = ((line_start - line_end) ** 2).sum()  # L2-squared
+    if side_size2 == 0:
+        raise ValueError('Line has zero length')  # ZeroDivisionError
+
+    ts = []
+    for pt in points:
+        t = ((pt - line_start) * (line_end - line_start)).sum() / side_size2
+        ts.append(t)
+        # p = 0 + t * (line_end - 0)  # projected point - unused
+
+    ts = np.array(ts)
+    ordering = np.argsort(ts)
+    return ordering
+
+
+def count_points_tlr(labels):
+    """ 
+    match front top points (3) with the corresponding bottom front points (3)
+
+    count points on y-axis (up, bottom-top)
+
+    connect corner points on xz-axes
+
+        order of vertical lines easily obtained from the bottom->top direction
+
+    """
+    pts_top = get_gt_points(labels, 'corner-top', cv=False)
+    pts_bottom = get_gt_points(labels, 'corner-bottom', cv=False)
+
+    farthest_top_idx = get_top_back_point(pts_bottom, pts_top)
+
+    # get axis shift vector
+
+    pts_top_matched = inverse_index(pts_top, farthest_top_idx)  # s/matched/front
+    # ^ using values, not indices => harder to find original indices -- do I need them?
+    up_shift = pts_top_matched.mean(axis=0) - pts_bottom.mean(axis=0)
+
+    # shift bottom to top
+    pts_bottom_shifted = pts_bottom + up_shift
+
+    # connect shifted bottom to closest top
+    top_indices_matched_ordered = cdist(pts_bottom_shifted, pts_top_matched).argmin(axis=1)
+    pts_top_matched = pts_top_matched[top_indices_matched_ordered]
+
+    # XZ-axes
+
+    # perpendicular to `up_shift`
+    side_direction = np.array([up_shift[1], up_shift[0] * -1])
+
+    vertical_lines_means = np.dstack([pts_bottom, pts_top_matched, pts_top_matched]).mean(axis=2)
+
+    # order vertical lines along the horizontal direction (left to right)
+    side_ordering = ordered_along_line(vertical_lines_means, side_direction)
+
+    # if False:
+    #     # verified, it works
+    #     for i in side_ordering:
+    #         plt.scatter(*pts_top[farthest_top_idx].T, marker='d')
+    #         plt.scatter(*pts_bottom.T, marker='o')
+    #         plt.scatter(*pts_top_matched.T, marker='o')
+    # 
+    #         plt.scatter(*pts_bottom[i].T, marker='+')
+    #         plt.scatter(*pts_top_matched[i].T, marker='x')
+    #         plt.gca().invert_yaxis()
+    #         plt.show()
+
+    i0, i1, i2 = side_ordering
+    # starting from:
+    # left
+    line_x0 = pts_bottom[[i0, i1]]
+    line_x1 = pts_top_matched[[i0, i1]]
+
+    # front
+    line_z0 = pts_bottom[[i1, i2]]
+    line_z1 = pts_top_matched[[i1, i2]]
+
+    # right
+    line_x2 = np.array([pts_top_matched[i2], pts_top[farthest_top_idx]])
+
+    # back
+    line_z2 = np.array([pts_top[farthest_top_idx], pts_top_matched[i0]])
+
+    # X and Z axes can get switched up but it doesn't affect the counting
+
+    # X-axis = left-right
+    pts_x = get_gt_points(labels, cat=['edge-top', 'edge-bottom'], cv=False)
+    counts_x = [
+        count_points_on_line(pts_x, line_x0),
+        count_points_on_line(pts_x, line_x1),
+        count_points_on_line(pts_x, line_x2),
+    ]
+    count_x = consensus(counts_x)
+
+    # Y-axis = top-bottom
+    pts_y = get_gt_points(labels, cat='edge-side', cv=False)
+
+    count_y = []
+    for i in range(3):
+        line_y = np.vstack([pts_bottom[i], pts_top_matched[i]])
+        c = count_points_on_line(pts_y, line_y)
+        count_y.append(c)
+
+    count_y = consensus(count_y)
+
+    # Z-axis = front-back
+    pts_z = get_gt_points(labels, cat=['edge-top', 'edge-bottom'], cv=False)
+    counts_z = [
+        count_points_on_line(pts_z, line_z0),
+        count_points_on_line(pts_z, line_z1),
+        count_points_on_line(pts_z, line_z2)
+    ]
+    count_z = consensus(counts_z)
+
+    print((count_x, count_y, count_z), (len(pts_x), len(pts_y), len(pts_z)))
+
+    count = (count_x + 1) * (count_y + 1) * (count_z + 1)
+    # +2 corners per dim,
+    # -1 because line edges = (vertices - 1)
+
+    return count
+
+
+def main():
+    """ Load GT points """
     input_folder = 'sirky' + '_val'
     labels_path = os.path.join(input_folder, 'labels.csv')
     labels = load_labels(labels_path, use_full_path=False, keep_bg=False)
@@ -312,7 +362,9 @@ if __name__ == '__main__':
     # file = next(iter(labels.image.unique()[::-1]))
     for file in labels.image.unique():
         # :params:
-        # file, file_labels (gt-style expected)
+        # file => img_path, file_labels (gt-style expected)
+        # config: scale, center_crop_fraction, model_crop_delta,
+        # flags: cv,
 
         print(file)
         file_labels = labels[labels.image == file]
@@ -320,7 +372,27 @@ if __name__ == '__main__':
         img, a = load_image(img_path, scale, center_crop_fraction)
         img, b = crop_to_prediction(img, (img.shape[0] - model_crop_delta, img.shape[1] - model_crop_delta))
 
+        """ USING CV=FALSE """
+        pts_top = get_gt_points(file_labels, 'corner-top', cv=False)
+        pts_bottom = get_gt_points(file_labels, 'corner-bottom', cv=False)
 
+        if False:
+            plt.imshow(img)
+            plt.plot(pts_bottom[:, 0], pts_bottom[:, 1], '+')
+            plt.plot(pts_top[:, 0], pts_top[:, 1], 'o')
+            # plt.plot(*pts_top[farthest_top_idx], 'x')
+            plt.title(file)
+            plt.show()
+            print('')
+            continue
+
+        if len(pts_top) == 4 and len(pts_bottom) == 3:
+            count_pred = count_points_tlr(file_labels)
+            count_gt = np.array(counts_gt[counts_gt.image == file].cnt)[0]
+
+            print(f'pred = {count_pred}, gt = {count_gt}')
+
+        """ older attempts """
         if False:
             canvas_cv = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
             points = get_cat_points(file_labels, cv=False)
@@ -331,193 +403,16 @@ if __name__ == '__main__':
             plt.imshow(img)
             plt.show()
 
-        """ Work with points """
-
-        """ USING CV=FALSE """
-        pts_top = get_cat_points(file_labels, 'corner-top', cv=False)
-        pts_bottom = get_cat_points(file_labels, 'corner-bottom', cv=False)
-
-        if len(pts_top) == 4 and len(pts_bottom) == 3:
-
-            """ 
-            match front top points (3) with the corresponding bottom front points (3)
-            
-            count points on y-axis (up, bottom-top)
-            
-            connect corner points on xz-axes
-            
-                order of vertical lines easily obtained from the bottom->top direction
-            
-            """
-            farthest_top_idx = get_top_back_point(pts_bottom, pts_top)
-
-            if False:
-                plt.imshow(img)
-                plt.plot(pts_bottom[:, 0], pts_bottom[:, 1], '+')
-                plt.plot(pts_top[:, 0], pts_top[:, 1], 'o')
-                plt.plot(*pts_top[farthest_top_idx], 'x')
-                plt.title(file)
-                plt.show()
-                print('')
-                continue
-
-            if False:
-                # hull = ConvexHull(pts_top)
-
-                # plt.plot(pts_top[:, 0], pts_top[:, 1], 'o')
-                for simplex in hull.simplices:
-                    plt.plot(*pts_top[simplex[0], :], '*')  # starting point - not unique
-                    plt.plot(pts_top[simplex, 0], pts_top[simplex, 1], 'k-')
-
-                plt.show()
-
-            # get axis shift vector
-
-            pts_top_matched = inverse_index(pts_top, farthest_top_idx)  # s/matched/front
-            # ^ using values, not indices => harder to find original indices -- do I need them?
-            up_shift = pts_top_matched.mean(axis=0) - pts_bottom.mean(axis=0)
-
-            # shift bottom to top
-            pts_bottom_shifted = pts_bottom + up_shift
-
-            # connect shifted bottom to closest top
-            top_indices_matched_ordered = cdist(pts_bottom_shifted, pts_top_matched).argmin(axis=1)
-            pts_top_matched = pts_top_matched[top_indices_matched_ordered]
-
-            # get line bottom-->top
-            # [ (bottom, top), ... ] = [ [[x, y], [x, y]], ... ]
-
-            # for i, pt_bot in enumerate(pts_bottom):
-            #     print(pt_bot, '-->', pts_top_matched[i], pt_bot - pts_top_matched[i])
-
-            # unused - getting lost at ellipse geometry
-            # def in_ellipse(pt, pt_focal1, pt_focal2, axis):
-            #     return (np.square(pt - pt_focal1) + np.square(pt - pt_focal2)) < axis
-
-            # testing axis-midpoint -- checked that it is on the line
-            # pts_bottom_shifted_on_line = pts_bottom + up_shift / 2
-
-            # Y-axis
-            pts_y = get_cat_points(file_labels, cat='edge-side', cv=False)
-
-            count_y = []
-            for i in range(3):
-                curr_line = np.vstack([pts_bottom[i], pts_top_matched[i]])
-                c = count_points_on_line(pts_y, curr_line, show=True)
-                # print(c)
-                count_y.append(c)
-
-            count_y = consensus(count_y)
-            # XZ-axes
-
-            # perpendicular to `up_shift`
-            side_direction = np.array([up_shift[1], up_shift[0] * -1])
-
-            vertical_lines_means = np.dstack([pts_bottom, pts_top_matched, pts_top_matched]).mean(axis=2)
-
-            # project `vertical_lines_means` to the `side_direction`
-
-            # line starts at [0, 0], ends at [*side_direction]
-            side_size2 = ((0 - side_direction) ** 2).sum()  # L2-squared
-
-            if side_size2 == 0:
-                raise ValueError('side_direction zero length')  # ZeroDivisionError
-
-            ts = []
-            for pt in vertical_lines_means:
-                t = ((pt - 0) * (side_direction - 0)).sum() / side_size2
-                ts.append(t)
-                # p = 0 + t * (side_direction - 0)  # projection - unused
-
-            ts = np.array(ts)
-            side_order = np.argsort(ts)
-
-            vertical_lines_means_ = vertical_lines_means[side_order]
-
-            if False:
-                # verified, it works
-                for i in side_order:
-                    plt.scatter(*pts_top[farthest_top_idx].T, marker='d')
-                    plt.scatter(*pts_bottom.T, marker='o')
-                    plt.scatter(*pts_top_matched.T, marker='o')
-
-                    plt.scatter(*pts_bottom[i].T, marker='+')
-                    plt.scatter(*pts_top_matched[i].T, marker='x')
-                    plt.gca().invert_yaxis()
-                    plt.show()
-
-            i0, i1, i2 = side_order
-            # starting from:
-            # left
-            x_line0 = pts_bottom[[i0, i1]]
-            x_line1 = pts_top_matched[[i0, i1]]
-
-            # front
-            z_line0 = pts_bottom[[i1, i2]]
-            z_line1 = pts_top_matched[[i1, i2]]
-
-            # right
-            x_line2 = np.array([pts_top_matched[i2], pts_top[farthest_top_idx]])
-
-            # back
-            z_line2 = np.array([pts_top[farthest_top_idx], pts_top_matched[i0]])
-
-            # plt.imshow(img)
-            # plt.scatter(*x_line0.T, marker='d')
-            # plt.show()
-            # 
-            # plt.imshow(img)
-
-            # X and Z axes can get switched up but it doesn't affect the counting
-
-            # X-axis = left-right
-            pts_x = get_cat_points(file_labels, cat=['edge-top', 'edge-bottom'], cv=False)
-            counts_x = [
-                count_points_on_line(pts_x, x_line0),
-                count_points_on_line(pts_x, x_line1),
-                count_points_on_line(pts_x, x_line2),
-            ]
-            count_x = consensus(counts_x)
-
-            # Z-axis = front-back
-            pts_z = get_cat_points(file_labels, cat=['edge-top', 'edge-bottom'], cv=False)
-            counts_z = [
-                count_points_on_line(pts_z, z_line0),
-                count_points_on_line(pts_z, z_line1),
-                count_points_on_line(pts_z, z_line2)
-            ]
-            count_z = consensus(counts_z)
-
-            print(file, (count_x, count_y, count_z), (len(pts_x), len(pts_y), len(pts_z)))
-
-            pred_total = (count_x + 1) * (count_y + 1) * (count_z + 1)
-            # +2 corners per dim,
-            # -1 because line edges = (vertices - 1)
-
-            count_gt = np.array(counts_gt[counts_gt.image == file].cnt)[0]
-            print(f'pred ={pred_total}, gt={count_gt}')
-            # raise ValueError()
-
-        """ Show original label points """
         if False:
-            plt.scatter(*points.T)
-            # coord origin is top-left
-            plt.gca().invert_yaxis()
+            hull = ConvexHull(pts_top)
+
+            # plt.plot(pts_top[:, 0], pts_top[:, 1], 'o')
+            for simplex in hull.simplices:
+                plt.plot(*pts_top[simplex[0], :], '*')  # starting point - not unique
+                plt.plot(pts_top[simplex, 0], pts_top[simplex, 1], 'k-')
+
             plt.show()
 
-            """ Connect point to its closest """
-            # for th in range(40, 250, 10):
-            th = 800
-            connect_overlay(points_cv, img_rgb, th * scale)
-
-        if False:
-            # double_voronoi(points)
-            # delaunay(points)
-            # c_img = np.dstack([canvas_cv] * 3)
-
-            line_points = np.linspace(200, 800, num=50)
-
-        """ Show with CV """
         if False:
             window_name = 'hough'
             cv.namedWindow(window_name, cv.WINDOW_GUI_NORMAL)
@@ -657,7 +552,6 @@ if __name__ == '__main__':
 
             plt.show()
 
-        # try:
         if False:
             """
             This started from the bottom.
@@ -786,18 +680,10 @@ if __name__ == '__main__':
             if count_gt != pred_total:
                 print('wrong, gt =', count_gt)
 
-            # except Exception as ex:
-            #     print(ex)
             print('...')
             tmp = input()
             if tmp == 'q':
                 raise ValueError()
-
-            del pts_bottom, pts_bottom_front, \
-                pts_left, pts_left_front, pts_left_top, \
-                pts_right, pts_right_front, pts_right_top, \
-                pts_top, pts_top_back, pts_top_front
-
 
         def connect_closest_fails():
             #  discovered on 20201020_121235.jpg
@@ -806,11 +692,15 @@ if __name__ == '__main__':
             plt.scatter(*pts_top_back.T, marker='o')
             plt.title('"Connest closest" assertion breaks')
             plt.show()
-
+        
             # solution
             # A) find single closest pair
             #    A.A) get more points using the same direction -- different angles
             #    A.B) remove this point and search again
-
+        
             # B) get direction and for each point find one closest to that line
             #       -- angles may differ
+
+
+if __name__ == '__main__':
+    main()
