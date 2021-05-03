@@ -16,7 +16,7 @@ import config
 from general import lru_cache
 from labels import load_labels, resize_labels
 from logs import log_mean_square_error_csv
-from show_results import display_predictions
+from display import display_predictions
 from src_util.general import timing
 
 
@@ -60,8 +60,8 @@ def make_prediction(base_model, img, maxes_only=False, undecided_only=False):
 
     :param base_model:
     :param img: img as batch
-    :param maxes_only:
-    :param undecided_only:
+    :param maxes_only: use only predictions argmax
+    :param undecided_only: use only predictions with low confidence values
     :return:
     """
     import tensorflow as tf
@@ -237,9 +237,6 @@ def mse_pointwise(predictions, file_labels, show=False):
 
         return mse_val
 
-    prediction_threshold = 0.9
-    min_blob_size = 160 * config.scale ** 2
-
     img_file_name = file_labels.iloc[0].image
 
     # distance mse mean calculation
@@ -251,44 +248,10 @@ def mse_pointwise(predictions, file_labels, show=False):
     # keypoint counting mae
     count_error_categories = []
 
-    # for development purposes only
-    blob_sizes = []
+    pts_pred, pts_pred_categories = prediction_to_keypoints(predictions)
 
     if show:
         fig, axes = plt.subplots(3, 3, figsize=(12, 10))
-
-    # thresholding -> 0, 1
-    predictions[:, :, 1:] = (predictions[:, :, 1:] >= prediction_threshold).astype(np.float64)
-
-    prediction_argmax = np.argmax(predictions, axis=2)
-
-    # find blobs in any non-background prediction pixels (ignoring keypoint category)
-    blobs, num_blobs = skimage_label(prediction_argmax > 0, return_num=True, connectivity=2)
-
-    pts_pred = []
-    pts_pred_categories = []
-
-    # create a keypoint from blob pixels
-    for blob in range(1, num_blobs + 1):
-        blob_indices = np.argwhere(blobs == blob)
-        if len(blob_indices) < min_blob_size:
-            continue
-
-        cats, support = np.unique(prediction_argmax[blobs == blob], return_counts=True)
-        blob_sizes.append(len(blob_indices))
-
-        center = np.mean(blob_indices, axis=0).astype(np.int)
-        winning_category = cats[np.argmax(support)]
-        pts_pred.append(center)
-        pts_pred_categories.append(winning_category)
-
-    if len(pts_pred) > 0:
-        pts_pred = np.flip(pts_pred, axis=1)  # yx -> xy
-    else:
-        # fix: empty list does not have dimensions like (n, 2)
-        pts_pred = np.array((0, 2))
-
-    pts_pred_categories = np.array(pts_pred_categories)
 
     for cat in range(predictions.shape[2]):
         if show:
@@ -302,8 +265,6 @@ def mse_pointwise(predictions, file_labels, show=False):
         pts_gt_cat = file_labels[file_labels.category == config.class_names[cat]][['x', 'y']].to_numpy()
         pts_pred_cat = pts_pred[pts_pred_categories == cat]
 
-        # if len(pts_pred_cat) != len(pts_gt_cat):
-        #     print('\t', config.class_names[cat], len(pts_pred_cat), '->', len(pts_gt_cat))
         mse = mse_value(pts_gt_cat, pts_pred_cat)
 
         if show:
@@ -333,25 +294,77 @@ def mse_pointwise(predictions, file_labels, show=False):
 
         # original image
         img_path = os.path.join('sirky', img_file_name)
+        if not os.path.isfile(img_path):
+            img_path = os.path.join('sirky_val', img_file_name)
+
         if os.path.isfile(img_path):
             img, _ = load_image(img_path, config.scale, config.center_crop_fraction)
             img, _ = crop_to_prediction(img, predictions.shape)
             axes[2, 2].imshow(img)
         else:
-            # print('not found:', img_path)
+            print('not found:', img_path)
             pass
 
         fig.suptitle('{}: {:.2e}'.format(img_file_name, mse_total))
         fig.tight_layout()
         fig.show()
 
-    # print('blob size:', np.mean(blob_sizes).astype(np.int))
-
     return mse_total, mse_cat_dict, count_mae
 
 
-def full_prediction(base_model, file_labels, img_path, output_location=None,
-                    show=True, maxes_only=False, undecided_only=False):
+def prediction_to_keypoints(predictions, min_blob_size=None, prediction_threshold=0.9):
+    """Convert prediction to keypoints
+
+    Threshold prediction
+    Find connected components
+    Merge neighboring components
+
+    :return: keypoints, categories (both as np.arrays)
+    """
+    if min_blob_size is None:
+        min_blob_size = 160 * config.scale ** 2
+
+    # thresholding -> 0, 1
+    predictions[:, :, 1:] = (predictions[:, :, 1:] >= prediction_threshold).astype(np.float64)
+    prediction_argmax = np.argmax(predictions, axis=2)
+
+    # find blobs in non-background prediction pixels (any keypoint category)
+    blobs, num_blobs = skimage_label(prediction_argmax > 0, return_num=True, connectivity=2)
+    points = []
+    points_categories = []
+
+    # create a keypoint from blob pixels
+    blob_sizes = []
+
+    for blob in range(1, num_blobs + 1):
+        blob_indices = np.argwhere(blobs == blob)
+        if len(blob_indices) < min_blob_size:
+            continue
+
+        cats, support = np.unique(prediction_argmax[blobs == blob], return_counts=True)
+        blob_sizes.append(len(blob_indices))
+
+        # todo split blob if several parts are > min_blob_size
+
+        center = np.mean(blob_indices, axis=0).astype(np.int)
+        winning_category = cats[np.argmax(support)]
+        points.append(center)
+        points_categories.append(winning_category)
+
+    if len(points) > 0:
+        points = np.flip(points, axis=1)  # yx -> xy
+    else:
+        # fix: empty list does not have dimensions like (n, 2)
+        points = np.array((0, 2))
+
+    points_categories = np.array(points_categories)
+    # print('blob size:', np.mean(blob_sizes).astype(np.int))
+
+    return points, points_categories  # , blob_sizes
+
+
+def eval_full_prediction(base_model, file_labels, img_path, output_location=None,
+                         show=True, maxes_only=False, undecided_only=False):
     """Show predicted heatmaps for full image and evaluate prediction
 
     :param base_model:
@@ -411,9 +424,9 @@ def full_prediction(base_model, file_labels, img_path, output_location=None,
     return pix_mse, dist_mse, count_mae
 
 
-def full_prediction_all(base_model, val=True,
-                        undecided_only=False, maxes_only=False,
-                        output_location=None, show=True):
+def eval_full_predictions_all(base_model, val=True,
+                              undecided_only=False, maxes_only=False,
+                              output_location=None, show=True):
     images_dir = 'sirky' + '_val' * val
     labels = load_labels(images_dir + os.sep + 'labels.csv', use_full_path=False, keep_bg=False)
     labels = resize_labels(labels, config.scale, config.train_dim - 1, config.center_crop_fraction)
@@ -428,9 +441,9 @@ def full_prediction_all(base_model, val=True,
     for file in pd.unique(labels['image']):
         file_labels = labels[labels.image == file]
         pix_mse, dist_mse, count_mae = \
-            full_prediction(base_model, file_labels, img_path=images_dir + os.sep + file,
-                            output_location=output_location, show=show,
-                            undecided_only=undecided_only, maxes_only=maxes_only)
+            eval_full_prediction(base_model, file_labels, img_path=images_dir + os.sep + file,
+                                 output_location=output_location, show=show,
+                                 undecided_only=undecided_only, maxes_only=maxes_only)
 
         pix_mse_list.append(pix_mse)
         dist_mse_list.append(dist_mse)

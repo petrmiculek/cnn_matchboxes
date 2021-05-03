@@ -12,7 +12,7 @@ from skimage.measure import label as skimage_label
 import seaborn as sns
 
 # local
-# from src.show_results import display_predictions
+# from src.display import display_predictions
 import config
 from src_util.labels import load_labels, resize_labels
 from src.eval_images import load_image, crop_to_prediction
@@ -52,7 +52,7 @@ def mean_square_error(pts_gt, pts_pred):
     :param pts_pred:
     :return:
     """
-    from hough import inverse_index, closest_pairs_in_order, closest_pairs_greedy
+    from counting import inverse_index, closest_pairs_in_order, closest_pairs_greedy
 
     assert pts_gt.ndim == pts_pred.ndim == 2
     assert pts_gt.shape[1] == pts_gt.shape[1] == 2

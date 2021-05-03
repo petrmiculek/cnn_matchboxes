@@ -6,7 +6,7 @@ import tensorflow_addons as tfa
 import tensorflow.keras.backend as K
 
 # local
-from eval_images import full_prediction_all
+from eval_images import eval_full_predictions_all
 from general import exp_form
 
 """
@@ -130,10 +130,10 @@ class MSELogger(tf.keras.callbacks.Callback):
         if epoch > 0 and epoch % self.freq == 0:
             base_model = self.model.layers[1]
 
-            pix_mse_val, dist_mse_val, count_mae_val = full_prediction_all(base_model, val=True, output_location=None,
-                                                                           show=False)
-            pix_mse_train, dist_mse_train, count_mae_train = full_prediction_all(base_model, val=False,
-                                                                                 output_location=None, show=False)
+            pix_mse_val, dist_mse_val, count_mae_val = eval_full_predictions_all(base_model, val=True, output_location=None,
+                                                                                 show=False)
+            pix_mse_train, dist_mse_train, count_mae_train = eval_full_predictions_all(base_model, val=False,
+                                                                                       output_location=None, show=False)
 
             print('pix_mse:', exp_form(pix_mse_train), exp_form(pix_mse_val))
             print('dist_mse:', exp_form(dist_mse_train), exp_form(dist_mse_val))

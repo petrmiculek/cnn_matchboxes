@@ -33,9 +33,20 @@ def postprocess_predictions(img, predictions, superimpose=False):
 
 
 # @pro file
-def display_predictions(predictions, img, img_path, class_titles, title='', show=True,
-                        output_location=None, superimpose=False):
-    # Plot predictions as heatmaps superimposed on input image
+def display_predictions(predictions, img, img_path, class_titles, title='',
+                        show=True, output_location=None, superimpose=False):
+    """Plot predictions as heatmaps superimposed on input image
+
+    :param predictions: model predictions WxHx8
+    :param img: image for which prediction was made, W'xH'x3
+    :param img_path: image path
+    :param class_titles: per-category titles (class names, per-category error)
+    :param title: plot title
+    :param show: show interactive/sciView plot
+    :param output_location: save output (=where to save)
+    :param superimpose: overlay prediction over image
+    """
+
     if not show and output_location is None:
         return
 
@@ -59,15 +70,60 @@ def display_predictions(predictions, img, img_path, class_titles, title='', show
 
     if output_location:
         os.makedirs(output_location, exist_ok=True)
-        fig_location = name_image_saving(img_path, output_location) + '.png'
+        fig_location = name_image_saving(img_path, output_location, 'prediction') + '.png'
         fig.savefig(fig_location, bbox_inches='tight')
     plt.close(fig)
 
 
-def name_image_saving(img_path, output_location):
+def display_keypoints(keypoints_categories, img, img_path, class_titles, title='',
+                        show=True, output_location=None, superimpose=False):
+    """Plot predicted keypoints on input image
+
+    :param keypoints_categories: model predictions WxHx8
+    :param img: image for which prediction was made, W'xH'x3
+    :param img_path: image path
+    :param class_titles: per-category titles (class names, per-category error)
+    :param title: plot title
+    :param show: show interactive/sciView plot
+    :param output_location: save output (=where to save)
+    :param superimpose: overlay prediction over image
+    """
+
+    if not show and output_location is None:
+        return
+
+    keypoints, categories = keypoints_categories
+
+    subplot_titles = np.append(class_titles, 'full-image')
+
+    # Plot heatmaps
+    fig, axes = plt.subplots(nrows=3, ncols=3, figsize=(10, 8))  # 16, 14
+    fig.suptitle('Keypoints\n{}'.format(title))
+    fig.subplots_adjust(right=0.85, left=0.05)
+    for i in range(9):
+        ax = axes[i // 3, i % 3]
+        ax.imshow(img)
+        kp = keypoints[categories == i]
+        if kp.size > 0:
+            ax.scatter(kp[:, 0], kp[:, 1], marker='x', color='r')
+        ax.axis('off')
+        ax.set_title(subplot_titles[i])
+
+    fig.tight_layout()
+    if show:
+        fig.show()
+
+    if output_location:
+        os.makedirs(output_location, exist_ok=True)
+        fig_location = name_image_saving(img_path, output_location, 'keypoints') + '.png'
+        fig.savefig(fig_location, bbox_inches='tight')
+    plt.close(fig)
+
+
+def name_image_saving(img_path, output_location, prefix='heatmap'):
     # sane location + filename, NO SUFFIX
     img_path_no_suffix = safestr(img_path[0:img_path.rfind('.')])
-    fig_location = os.path.join(output_location, 'heatmap_{}'.format(img_path_no_suffix))
+    fig_location = os.path.join(output_location, f'{prefix}_{img_path_no_suffix}')
     return fig_location
 
 

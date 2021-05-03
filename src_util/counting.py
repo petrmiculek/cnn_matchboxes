@@ -2,6 +2,8 @@
 import os
 
 # external
+import sys
+
 import cv2 as cv
 import numpy as np
 import pandas as pd
@@ -166,6 +168,7 @@ def count_points_on_line(points, line, dst_th=10, show=False):
         return 0  # just corners
 
     p1, p2 = line
+    line_len = np.linalg.norm(p2 - p1)
 
     tolerance = [10, 10]
     low = np.min(line, axis=0) - tolerance
@@ -174,7 +177,12 @@ def count_points_on_line(points, line, dst_th=10, show=False):
     wrapper = points[idx_inside]  # obálka = rectangle aligned with axes
 
     # distance(points, line)
-    dists = np.abs(np.cross(p2 - p1, p1 - wrapper)) / np.linalg.norm(p2 - p1)
+    dists = np.abs(np.cross(p2 - p1, p1 - wrapper))
+    if line_len != 0:
+        # print(line_len)
+        dists = dists / line_len
+    else:
+        print(f'count_points_on_line: zero-length line: {p1} -> {p2}', file=sys.stderr)
 
     # thresholding
     on_the_line = np.argwhere(dists < dst_th)[:, 0]
@@ -247,30 +255,28 @@ def count_points_tlr(labels):
         order of vertical lines easily obtained from the bottom->top direction
 
     """
-    pts_top = get_gt_points(labels, 'corner-top', cv=False)
-    pts_bottom = get_gt_points(labels, 'corner-bottom', cv=False)
 
-    farthest_top_idx = get_top_back_point(pts_bottom, pts_top)
+    corners_top = get_gt_points(labels, 'corner-top', cv=False)
+    corners_bottom = get_gt_points(labels, 'corner-bottom', cv=False)
 
-    # get axis shift vector
+    if not len(corners_bottom) == 3 or not len(corners_top) == 4:
+        return -1
 
-    pts_top_matched = inverse_index(pts_top, farthest_top_idx)  # s/matched/front
+    farthest_top_idx = get_top_back_point(corners_bottom, corners_top)
+
+    corners_top_front = inverse_index(corners_top, farthest_top_idx)  # s/matched/front
     # ^ using values, not indices => harder to find original indices -- do I need them?
-    up_shift = pts_top_matched.mean(axis=0) - pts_bottom.mean(axis=0)
 
-    # shift bottom to top
-    pts_bottom_shifted = pts_bottom + up_shift
+    top_matched_indices, up_shift = match_top_to_bottom(corners_bottom, corners_top_front)
 
-    # connect shifted bottom to closest top
-    top_indices_matched_ordered = cdist(pts_bottom_shifted, pts_top_matched).argmin(axis=1)
-    pts_top_matched = pts_top_matched[top_indices_matched_ordered]
+    corners_top_front = corners_top_front[top_matched_indices]
 
     # XZ-axes
 
     # perpendicular to `up_shift`
     side_direction = np.array([up_shift[1], up_shift[0] * -1])
 
-    vertical_lines_means = np.dstack([pts_bottom, pts_top_matched, pts_top_matched]).mean(axis=2)
+    vertical_lines_means = np.dstack([corners_bottom, corners_top_front]).mean(axis=2)
 
     # order vertical lines along the horizontal direction (left to right)
     side_ordering = ordered_along_line(vertical_lines_means, side_direction)
@@ -280,7 +286,7 @@ def count_points_tlr(labels):
     #     for i in side_ordering:
     #         plt.scatter(*pts_top[farthest_top_idx].T, marker='d')
     #         plt.scatter(*pts_bottom.T, marker='o')
-    #         plt.scatter(*pts_top_matched.T, marker='o')
+    #         plt.scatter(*pts_top_front.T, marker='o')
     # 
     #         plt.scatter(*pts_bottom[i].T, marker='+')
     #         plt.scatter(*pts_top_matched[i].T, marker='x')
@@ -290,18 +296,18 @@ def count_points_tlr(labels):
     i0, i1, i2 = side_ordering
     # starting from:
     # left
-    line_x0 = pts_bottom[[i0, i1]]
-    line_x1 = pts_top_matched[[i0, i1]]
+    line_x0 = corners_bottom[[i0, i1]]
+    line_x1 = corners_top_front[[i0, i1]]
 
     # front
-    line_z0 = pts_bottom[[i1, i2]]
-    line_z1 = pts_top_matched[[i1, i2]]
+    line_z0 = corners_bottom[[i1, i2]]
+    line_z1 = corners_top_front[[i1, i2]]
 
     # right
-    line_x2 = np.array([pts_top_matched[i2], pts_top[farthest_top_idx]])
+    line_x2 = np.array([corners_top_front[i2], corners_top[farthest_top_idx]])
 
     # back
-    line_z2 = np.array([pts_top[farthest_top_idx], pts_top_matched[i0]])
+    line_z2 = np.array([corners_top[farthest_top_idx], corners_top_front[i0]])
 
     # X and Z axes can get switched up but it doesn't affect the counting
 
@@ -319,7 +325,7 @@ def count_points_tlr(labels):
 
     count_y = []
     for i in range(3):
-        line_y = np.vstack([pts_bottom[i], pts_top_matched[i]])
+        line_y = np.vstack([corners_bottom[i], corners_top_front[i]])
         c = count_points_on_line(pts_y, line_y)
         count_y.append(c)
 
@@ -343,9 +349,32 @@ def count_points_tlr(labels):
     return count
 
 
+def match_top_to_bottom(corners_bottom, corners_top_front):
+    if len(corners_bottom) != len(corners_top_front):
+        raise UserWarning(f'Top-bottom matching failed - different number of points '
+                          f'{len(corners_bottom)} x {len(corners_top_front)}')
+    # get axis shift vector
+    up_shift = corners_top_front.mean(axis=0) - corners_bottom.mean(axis=0)
+
+    # shift bottom to top
+    pts_bottom_shifted = corners_bottom + up_shift
+
+    # connect shifted bottom to closest top
+    top_indices_matched_ordered = cdist(pts_bottom_shifted, corners_top_front).argmin(axis=1)
+
+    # check unique indices
+    idx_len = top_indices_matched_ordered.shape[0]
+    expected_sum = (idx_len * (idx_len - 1) / 2)
+    if top_indices_matched_ordered.sum() != expected_sum:
+        print(top_indices_matched_ordered.sum(), expected_sum)
+        raise UserWarning(f'Top-bottom matching failed - non-unique pairs: {top_indices_matched_ordered}')
+
+    return top_indices_matched_ordered, up_shift
+
+
 def main():
     """ Load GT points """
-    input_folder = 'sirky' + '_val'
+    input_folder = 'sirky'  # + '_val'
     labels_path = os.path.join(input_folder, 'labels.csv')
     labels = load_labels(labels_path, use_full_path=False, keep_bg=False)
 
@@ -702,5 +731,6 @@ def main():
             #       -- angles may differ
 
 
+# todo uncomment
 if __name__ == '__main__':
     main()

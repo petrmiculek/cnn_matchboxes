@@ -38,7 +38,7 @@ sys.path.extend(['/home/petrmiculek/Code/light_matches',
 from models import *
 import model_build
 from datasets import get_dataset
-from eval_images import full_prediction_all
+from eval_images import eval_full_predictions_all
 from eval_samples import evaluate_model, show_layer_activations
 from logs import log_model_info
 from mining import mine_hard_cases
@@ -178,9 +178,9 @@ def run(model_builder, hparams):
 
         """Full image prediction"""
         pix_mse_val, dist_mse_val, count_mae_val = \
-            full_prediction_all(base_model, val=True, output_location=config.output_location, show=config.show)
+            eval_full_predictions_all(base_model, val=True, output_location=config.output_location, show=config.show)
         pix_mse_train, dist_mse_train, count_mae_train = \
-            full_prediction_all(base_model, val=False, output_location=config.output_location, show=False)
+            eval_full_predictions_all(base_model, val=False, output_location=config.output_location, show=False)
 
         val_metrics = model.evaluate(val_ds, verbose=0)  # 5 metrics, as per model_ops.compile_model
         pr_value_val = val_metrics[4]
