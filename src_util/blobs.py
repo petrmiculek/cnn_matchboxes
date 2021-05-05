@@ -52,7 +52,7 @@ def mean_square_error(pts_gt, pts_pred):
     :param pts_pred:
     :return:
     """
-    from counting import inverse_index, closest_pairs_in_order, closest_pairs_greedy
+    from counting import inverse_indexing, closest_pairs_in_order, closest_pairs_greedy
 
     assert pts_gt.ndim == pts_pred.ndim == 2
     assert pts_gt.shape[1] == pts_gt.shape[1] == 2
