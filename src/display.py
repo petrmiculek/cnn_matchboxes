@@ -105,7 +105,7 @@ def display_keypoints(keypoints_categories, img, img_path, class_titles, title='
         ax.imshow(img)
         kp = keypoints[categories == i]
         if kp.size > 0:
-            ax.scatter(kp[:, 0], kp[:, 1], marker='x', color='r')
+            ax.scatter(kp[:, 0], kp[:, 1], marker='.', color='c')
         ax.axis('off')
         ax.set_title(subplot_titles[i])
 

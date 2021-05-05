@@ -17,6 +17,7 @@ from scipy.spatial.distance import cdist, cosine
 
 # local
 from eval_images import crop_to_prediction, load_image
+from general import inverse_indexing
 from labels import load_labels, resize_labels
 
 
@@ -79,16 +80,6 @@ def get_gt_points(file_labels, cat=None, cv=False):
     else:
         # numpy, scikit order
         return np.array([lines.x, lines.y]).T
-
-
-def inverse_indexing(arr, index):
-    """arr - arr[index]
-
-    `index` is a negative mask for selecting from `arr`
-    """
-    mask = np.ones(len(arr), dtype=np.bool)
-    mask[index] = 0
-    return arr[mask]  # could use a copy
 
 
 def connect_points(canvas, pts1, pts2, c=200):
@@ -192,7 +183,6 @@ def count_points_on_line(points, line, dst_th=10, show=False):
     on_the_line = np.argwhere(dists < dst_th)[:, 0]
 
     if show:
-        plt.imshow(img)
         plt.scatter(*points.T, marker='o')
         plt.scatter(*wrapper[on_the_line].T, marker='x')
         plt.scatter(*line.T, marker='+')
@@ -249,6 +239,78 @@ def ordered_along_line(points, line_end, line_start=np.array([0, 0])):
     return ordering
 
 
+def count_points_l(file_labels):
+    """
+
+    Both top and bottom lines are made to face right
+
+    :param file_labels:
+    :return:
+    """
+    corners_top = get_gt_points(file_labels, 'corner-top', cv=False)
+    corners_bottom = get_gt_points(file_labels, 'corner-bottom', cv=False)
+    if not len(corners_top) == 2 or not len(corners_bottom) == 2:
+        return -1
+
+    bottom_left, bottom_right = 0, 1
+    line_top = corners_bottom[bottom_right] - corners_bottom[bottom_left]
+    if np.any(line_top != to_right_quadrants(line_top)):
+        bottom_left, bottom_right = bottom_right, bottom_left
+
+    top_left, top_right = 0, 1
+    line_bottom = corners_top[top_right] - corners_top[top_left]
+    if np.any(line_bottom != to_right_quadrants(line_bottom)):
+        top_left, top_right = top_right, top_left
+
+    lines_x = [
+        corners_bottom[[bottom_left, bottom_right]],
+        corners_top[[top_left, top_right]]
+    ]
+
+    lines_y = [
+        np.c_[corners_bottom[bottom_left], corners_top[top_left]].T,
+        np.c_[corners_bottom[bottom_right], corners_top[top_right]].T
+    ]
+
+    lines_z = None
+
+    count = final_count(file_labels, lines_x, lines_y, lines_z)
+
+    return count
+
+
+def count_points_t(file_labels):
+    corners_top = get_gt_points(file_labels, 'corner-top', cv=False)
+    if not len(corners_top) == 4:
+        return -1
+
+    rect_ordering = ConvexHull(corners_top)
+
+    i, j = rect_ordering.simplices[0]
+
+    line1 = corners_top[j] - corners_top[i]
+
+    parallel_indices = find_parallel(corners_top, line1)  # redundant work
+
+    i, j, m, n = parallel_indices
+
+    lines_x = [
+        corners_top[[i, j]],
+        corners_top[[m, n]]
+    ]
+
+    lines_y = None
+
+    lines_z = [
+        corners_top[[i, m]],
+        corners_top[[j, n]]
+    ]
+
+    count = final_count(file_labels, lines_x, lines_y, lines_z)
+
+    return count
+
+
 def count_points_tl(file_labels):
     corners_top = get_gt_points(file_labels, 'corner-top', cv=False)
     corners_bottom = get_gt_points(file_labels, 'corner-bottom', cv=False)
@@ -289,7 +351,6 @@ def count_points_tl(file_labels):
         # make sure it is at the beginning
         vertical_ordering = vertical_ordering[::-1]
 
-    print(vertical_ordering)
     corners_top_front = lines[vertical_ordering[1]]
     corners_top_back = lines[vertical_ordering[2]]
 
@@ -514,18 +575,26 @@ def count_points_tlr(file_labels):
     return count
 
 
-def final_count(labels, lines_x, lines_y, lines_z):
+def final_count(labels, lines_x=None, lines_y=None, lines_z=None, show=False, cv=False):
     # X-axis = left-right
-    pts_x = get_gt_points(labels, cat=['edge-top', 'edge-bottom'], cv=False)
-    count_x = count_points_lines_all(lines_x, pts_x)
+    if lines_x is not None:
+        pts_x = get_gt_points(labels, cat=['edge-top', 'edge-bottom'], cv=cv)
+        count_x = count_points_lines_all(lines_x, pts_x, show=show)
+    else:
+        count_x = 0
 
     # Y-axis = top-bottom
-    pts_y = get_gt_points(labels, cat='edge-side', cv=False)
-    count_y = count_points_lines_all(lines_y, pts_y)
-
+    if lines_y is not None:
+        pts_y = get_gt_points(labels, cat='edge-side', cv=cv)
+        count_y = count_points_lines_all(lines_y, pts_y, show=show)
+    else:
+        count_y = 0
     # Z-axis = front-back
-    pts_z = get_gt_points(labels, cat=['edge-top', 'edge-bottom'], cv=False)
-    count_z = count_points_lines_all(lines_z, pts_z)
+    if lines_z is not None:
+        pts_z = get_gt_points(labels, cat=['edge-top', 'edge-bottom'], cv=cv)
+        count_z = count_points_lines_all(lines_z, pts_z, show=show)
+    else:
+        count_z = 0
 
     # print((count_x, count_y, count_z), (len(pts_x), len(pts_y), len(pts_z)))
 
@@ -560,10 +629,10 @@ def to_right_quadrants(vector):
     return vector
 
 
-def count_points_lines_all(lines, points):
+def count_points_lines_all(lines, points, show=False):
     counts = []
     for curr_line in lines:
-        c = count_points_on_line(points, curr_line, show=False)
+        c = count_points_on_line(points, curr_line, show=show)
         counts.append(c)
     count_x = consensus(counts)
     return count_x
@@ -590,6 +659,35 @@ def match_top_to_bottom(corners_bottom, corners_top_front):
         raise UserWarning(f'Top-bottom matching failed - non-unique pairs: {top_indices_matched_ordered}')
 
     return top_indices_matched_ordered, up_shift
+
+
+def count_crates(keypoints):
+    corners_top = get_gt_points(keypoints, 'corner-top', cv=False)
+    corners_bottom = get_gt_points(keypoints, 'corner-bottom', cv=False)
+    if len(corners_top) == 4 and len(corners_bottom) == 0:
+        # print('top view (T)')
+        count_pred = count_points_t(keypoints)
+    elif len(corners_top) == 4 and len(corners_bottom) == 3:
+        # print('side-oblique view (TLR)')
+        count_pred = count_points_tlr(keypoints)
+
+    elif len(corners_top) == 3 and len(corners_bottom) == 3:
+        # print('side-oblique view (LR)')
+        count_pred = count_points_lr(keypoints)
+
+    elif len(corners_top) == 4 and len(corners_bottom) == 2:
+        # print('side-top view (TL)')
+        count_pred = count_points_tl(keypoints)
+
+    elif len(corners_top) == 2 and len(corners_bottom) == 2:
+        # print('side view (L)')
+        count_pred = count_points_l(keypoints)
+    else:
+        print('Cannot estimate view from prediction', file=sys.stderr)
+        return -1
+    # print(f'pred = {count_pred}, gt = {count_gt}')
+
+    return count_pred
 
 
 # def main():
@@ -620,56 +718,10 @@ if __name__ == '__main__':
 
         count_gt = np.array(counts_gt[counts_gt.image == file].cnt)[0]
 
-        """ USING CV=FALSE """
-        pts_top = get_gt_points(file_labels, 'corner-top', cv=False)
-        pts_bottom = get_gt_points(file_labels, 'corner-bottom', cv=False)
+        count_pred = count_crates(file_labels)
 
-        if False:
-            # just top + bottom
-            plt.imshow(img)
-            plt.plot(pts_bottom[:, 0], pts_bottom[:, 1], '+')
-            plt.plot(pts_top[:, 0], pts_top[:, 1], 'o')
-            # plt.plot(*pts_top[farthest_top_idx], 'x')
-            plt.title(file)
-            plt.show()
-            print('')
-
-        if len(pts_top) == 4 and len(pts_bottom) == 3:
-            # print('side-oblique view (TLR)')
-            # count_pred = count_points_tlr(file_labels)
-            pass
-
-        elif len(pts_top) == 3 and len(pts_bottom) == 3:
-            # print('side-oblique view (LR)')
-            # count_pred = count_points_lr(file_labels)
-            pass
-
-        elif len(pts_top) == 4 and len(pts_bottom) == 2:
-            print('side-top view (TL)')
-            count_pred = count_points_tl(file_labels)
-
+        if count_pred != count_gt:
             print(f'pred = {count_pred}, gt = {count_gt}')
-
-        """ older attempts """
-        if False:
-            canvas_cv = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
-            points = get_cat_points(file_labels, cv=False)
-            points_cv = get_cat_points(file_labels, cv=True)
-            canvas_cv[points_cv[:, 0], points_cv[:, 1]] = 255
-
-        if False:
-            plt.imshow(img)
-            plt.show()
-
-        if False:
-            hull = ConvexHull(pts_top)
-
-            # plt.plot(pts_top[:, 0], pts_top[:, 1], 'o')
-            for simplex in hull.simplices:
-                plt.plot(*pts_top[simplex[0], :], '*')  # starting point - not unique
-                plt.plot(pts_top[simplex, 0], pts_top[simplex, 1], 'k-')
-
-            plt.show()
 
         if False:
             window_name = 'hough'
@@ -752,67 +804,6 @@ if __name__ == '__main__':
             plt.show()
 
         if False:
-
-            """ Use categories """
-            # start from the top
-            pts_top = get_cat_points(file_labels, 'corner-top', cv=True)
-            pts_bottom = get_cat_points(file_labels, 'corner-bottom', cv=True)
-
-            print(f'top: {len(pts_top)}, bottom: {len(pts_bottom)}')
-
-            failed = False
-
-            if len(pts_top) == 2:
-                if len(pts_bottom) == 2:
-                    print('side view')
-                else:
-                    print('failed')
-                    failed = True
-
-            elif len(pts_top) == 3:
-                if len(pts_bottom) == 3:
-                    print('side-oblique view')
-                    # DONE
-                else:
-                    print('failed')
-                    failed = True
-
-            elif len(pts_top) == 4:
-                if len(pts_bottom) == 0:
-                    print('top view')
-                elif len(pts_bottom) == 3:
-                    print('oblique (corner) view')
-                    # DONE
-
-                elif len(pts_bottom) == 2:
-                    print('side-top view')
-                    # DOING
-                else:
-                    print('failed')
-                    failed = True
-
-            else:
-                print('view recognition failed')
-                failed = True
-
-            if failed:
-                plt.imshow(img)
-                plt.title(f'top: {len(pts_top)}, bottom: {len(pts_bottom)}')
-                plt.show()
-
-            continue
-
-            hull = ConvexHull(pts_top)
-
-            plt.plot(pts_top[:, 0], pts_top[:, 1], 'o')
-            for simplex in hull.simplices:
-                plt.plot(pts_top[:, 0], pts_top[:, 1], 'o')
-                plt.plot(*pts_top[simplex[0], :], '*')
-                plt.plot(pts_top[simplex, 0], pts_top[simplex, 1], 'k-')
-
-            plt.show()
-
-        if False:
             """
             This started from the bottom.
             
@@ -827,32 +818,32 @@ if __name__ == '__main__':
                 
             3) connect everything left-to-right
             """
-            pts_top = get_cat_points(file_labels, 'corner-top', cv=True)
-            pts_bottom = get_cat_points(file_labels, 'corner-bottom', cv=True)
+            corners_top = get_cat_points(file_labels, 'corner-top', cv=True)
+            corners_bottom = get_cat_points(file_labels, 'corner-bottom', cv=True)
 
             # reorder to descending Y => from lowest to highest (image-coords start in top-left)
-            pts_bottom = pts_bottom[np.argsort(pts_bottom[:, 0])[::-1]]
+            corners_bottom = corners_bottom[np.argsort(corners_bottom[:, 0])[::-1]]
 
-            if len(pts_bottom) == 3:
+            if len(corners_bottom) == 3:
                 # consider any two of the bottom points to be 'front'
-                pts_bottom_front = pts_bottom[:2]
+                pts_bottom_front = corners_bottom[:2]
             else:
-                pts_bottom_front = pts_bottom
+                pts_bottom_front = corners_bottom
 
             if False:
-                dists_bottom_top = cdist(pts_top, pts_bottom_front)
+                dists_bottom_top = cdist(corners_top, pts_bottom_front)
                 closest_top_front_indices = np.argmin(dists_bottom_top, axis=0)
                 assert len(np.unique(closest_top_front_indices)) == len(closest_top_front_indices), \
                     'bottom-top closest pairs not disjoint'
                 # ordering for bottom-to-top-front
-                pts_top_front = pts_top[closest_top_front_indices]
+                pts_top_front = corners_top[closest_top_front_indices]
                 # ^ see doc for shortcomings
             else:
-                closest_top_front_indices = closest_pairs_in_order(pts_bottom_front, pts_top, indices_only=True)
-                pts_top_front = pts_top[closest_top_front_indices]
+                closest_top_front_indices = closest_pairs_in_order(pts_bottom_front, corners_top, indices_only=True)
+                pts_top_front = corners_top[closest_top_front_indices]
 
             # top non-front points
-            pts_top_back = inverse_indexing(pts_top, closest_top_front_indices)  # compare
+            pts_top_back = inverse_indexing(corners_top, closest_top_front_indices)  # compare
 
             if len(pts_top_front) != len(pts_top_front):
                 print('warning, top len - front: {} x back: {}'.format(len(pts_top_front), len(pts_top_back)))
@@ -881,10 +872,6 @@ if __name__ == '__main__':
             # left -> right
             connect_points(canvas_cv, pts_left, pts_right, c=120)
 
-            # connect_points(canvas_cv, pts_top_front[::2], pts_top_front[1::2])
-            # connect_points(canvas_cv, pts_top_back[::2], pts_top_back[1::2])
-            # connect_points(canvas_cv, pts_bottom_front[::2], pts_bottom_front[1::2])
-
             # x = []  # left-to-right
             # y = []  # front-to-back
             # z = []  # top-to-bottom
@@ -895,49 +882,33 @@ if __name__ == '__main__':
 
             # print(f'Axes in cv order[y, x]\n{x=}\n{y=}\n{z=}\n')
 
-            plt.imshow(canvas_cv)
-            plt.title(file)
-            plt.show()
-
             pts_left_top = np.vstack([pts_top_front[0], pts_top_back[0]])
             pts_right_top = np.vstack([pts_top_front[1], pts_top_back[1]])
 
             pts_left_front = np.vstack([pts_bottom_front[0], pts_top_front[0]])
             pts_right_front = np.vstack([pts_bottom_front[1], pts_top_front[1]])
 
-            pts_x = get_cat_points(file_labels, cat=['edge-top', 'edge-bottom'], cv=True)
-            counts_x = [
-                count_points_on_line(pts_x, pts_top_front),
-                count_points_on_line(pts_x, pts_top_back),
-                count_points_on_line(pts_x, pts_bottom_front),
+            lines_x = [
+                pts_top_front,
+                pts_top_back,
+                pts_bottom_front
             ]
-            count_x = consensus(counts_x)
 
-            pts_y = get_cat_points(file_labels, cat='edge-top', cv=True)
-            counts_y = [
-                count_points_on_line(pts_y, pts_left_top),
-                count_points_on_line(pts_y, pts_right_top)
+            lines_y = [
+                pts_left_top,
+                pts_right_top
             ]
-            count_y = consensus(counts_y)
 
-            pts_z = get_cat_points(file_labels, cat='edge-side', cv=True)
-            counts_z = [
-                count_points_on_line(pts_z, pts_left_front),
-                count_points_on_line(pts_z, pts_right_front)
+            lines_z = [
+                pts_left_front,
+                pts_right_front
             ]
-            count_z = consensus(counts_z)
 
-            # todo
-            # counting points needs to use also intersection categories
-            # instead of all points, also just pass categories accordingly
+            count_pred = final_count(file_labels, lines_x, lines_y, lines_z, show=False, cv=True)
 
-            pred_total = (count_x + 1) * (count_y + 1) * (count_z + 1)
-            # +2 corners per dim,
-            # -1 because line edges = (vertices - 1)
-
-            print('pred =', pred_total)
+            print('pred =', count_pred)
             count_gt = np.array(counts_gt[counts_gt.image == file].cnt)[0]
-            if count_gt != pred_total:
+            if count_gt != count_pred:
                 print('wrong, gt =', count_gt)
 
             print('...')

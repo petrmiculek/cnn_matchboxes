@@ -143,3 +143,13 @@ def get_checkpoint_path(path='/tmp/model_checkpoints'):
             shutil.rmtree(f)
 
     return os.path.join(path, 'checkpoint')
+
+
+def inverse_indexing(arr, index):
+    """arr - arr[index]
+
+    `index` is a negative mask for selecting from `arr`
+    """
+    mask = np.ones(len(arr), dtype=np.bool)
+    mask[index] = 0
+    return arr[mask]  # could use a copy

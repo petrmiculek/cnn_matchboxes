@@ -20,7 +20,7 @@ from eval_images import \
     crop_to_prediction
 from eval_samples import evaluate_model, show_layer_activations
 from display import display_predictions, display_keypoints
-from src_util.counting import count_points_tlr, get_gt_points
+from src_util.counting import count_points_tlr, get_gt_points, count_crates
 
 if __name__ == '__main__':
     config.train = False
@@ -135,10 +135,12 @@ if __name__ == '__main__':
             df = pd.DataFrame(np.c_[keypoints, categories], columns=['x', 'y', 'category'])
             label_dict = dict(enumerate(config.class_names))
             df['category'] = df['category'].map(label_dict)
-            count_prediction = count_points_tlr(df)
             count_gt = np.array(counts_gt[counts_gt.image == file].cnt)[0]
+            count_pred = count_crates(df)
 
-            print(f'Count: prediction = {count_prediction}, gt = {count_gt}')
+            print(f'Count: prediction = {count_pred}, gt = {count_gt}')
 
-            # display_keypoints((keypoints, categories), img, img_path, config.class_names, title=count,
-            #                     show=show, output_location=output_location)
+
+            title = f'{file}\nPred: {count_pred}, GT: {count_gt}'
+            display_keypoints((keypoints, categories), img, img_path, config.class_names, title=title,
+                                show=show, output_location=output_location)
