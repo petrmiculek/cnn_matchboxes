@@ -1,6 +1,7 @@
 # stdlib
 import csv
 import os
+import sys
 from collections import defaultdict
 
 # external
@@ -162,3 +163,31 @@ def resize_labels_dict(dict_labels, orig_img_size, scale, model_crop_delta, cent
         new[cat] = new_l
 
     return new
+
+
+@lru_cache
+def get_gt_counts_all(counts_path=None):
+    if counts_path is None:
+        counts_path = os.path.join('sirky', 'count.txt')
+
+    if not os.path.isfile(counts_path):
+        raise OSError(f'GT Counts file "{counts_path}" does not exist')
+
+    counts_gt = pd.read_csv(counts_path,
+                            header=None,
+                            names=['image', 'cnt'],
+                            dtype={'image': str, 'cnt': np.int32})
+    return counts_gt
+
+
+def get_gt_count(img_path):
+    counts_gt = get_gt_counts_all()
+
+    try:
+        file = img_path[img_path.rfind(os.sep) + 1:]  # does nothing when '/' is not found
+        crate_count_gt = np.array(counts_gt[counts_gt.image == file].cnt)[0]
+    except Exception as exc:
+        print('Reading GT count failed:\n' + str(exc), file=sys.stderr)
+        crate_count_gt = -1
+
+    return crate_count_gt

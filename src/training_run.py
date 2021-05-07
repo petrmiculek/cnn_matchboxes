@@ -14,11 +14,12 @@ https://colab.research.google.com/drive/1F28FEGGLmy8-jW9IaOo60InR9VQtPbmG
 import os
 import sys
 
+from model_util import tensorboard_hparams_init, tf_init
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import datetime
 
 # external libs
-import tensorflow as tf
 from tensorflow.python.framework.errors_impl import NotFoundError
 from tensorboard.plugins.hparams import api as hp
 
@@ -41,8 +42,7 @@ from datasets import get_dataset
 from eval_images import eval_full_predictions_all
 from eval_samples import evaluate_model, show_layer_activations
 from logs import log_model_info
-from mining import mine_hard_cases
-from src_util.general import safestr, DuplicateStream, timing, get_checkpoint_path
+from src_util.general import safestr, DuplicateStream, get_checkpoint_path
 import config
 
 
@@ -62,14 +62,14 @@ def run(model_builder, hparams):
         config.center_crop_fraction = 0.5
         config.batch_size = 128
 
-    hard_mining = False
     print({h: hparams[h] for h in hparams})
 
     # for batch-running
     # if True:
     try:
-        dataset_dir = '/data/datasets/{}x_{:03d}s_{}bg' \
+        dataset_dir = '{}x_{:03d}s_{}bg' \
             .format(config.dataset_dim, int(100 * config.scale), config.dataset_size)
+        dataset_dir = os.path.join(config.datasets_root, dataset_dir)
         print('Loading dataset from:', dataset_dir)
         config.checkpoint_path = get_checkpoint_path()
 
@@ -113,45 +113,20 @@ def run(model_builder, hparams):
         config.epochs_trained = 0
 
         if config.train:
-            if hard_mining:
-
-                epochs_to_reshuffle = 10
-                curr_ds = train_ds
-                while config.epochs_trained < config.epochs:
-                    """ Train the model"""
-                    model.fit(
-                        curr_ds,
-                        validation_data=val_ds,
-                        validation_freq=5,
-                        epochs=(epochs_to_reshuffle + config.epochs_trained),
-                        initial_epoch=config.epochs_trained,
-                        callbacks=callbacks,
-                        class_weight=class_weights,
-                        verbose=2  # one line per epoch
-                    )
-
-                    hard_ds = timing(mine_hard_cases)(base_model, train_ds)
-
-                    # expand for keypoints and background
-                    curr_ds = tf.data.experimental.sample_from_datasets([train_ds, hard_ds], weights=[0.5, 0.5])
-                    curr_ds = curr_ds.batch(64).prefetch(2)
-
-                    config.epochs_trained += config.epochs
-            else:
-                try:
-                    model.fit(
-                        train_ds,
-                        validation_data=val_ds,
-                        validation_freq=5,
-                        epochs=(config.epochs + config.epochs_trained),
-                        initial_epoch=config.epochs_trained,
-                        callbacks=callbacks,
-                        class_weight=class_weights,
-                        verbose=2  # one line per epoch
-                    )
-                except KeyboardInterrupt:
-                    print('Training stopped preemptively')
-                config.epochs_trained += config.epochs
+            try:
+                model.fit(
+                    train_ds,
+                    validation_data=val_ds,
+                    validation_freq=5,
+                    epochs=(config.epochs + config.epochs_trained),
+                    initial_epoch=config.epochs_trained,
+                    callbacks=callbacks,
+                    class_weight=class_weights,
+                    verbose=2  # one line per epoch
+                )
+            except KeyboardInterrupt:
+                print('Training stopped preemptively')
+            config.epochs_trained += config.epochs
             try:
                 if config.epochs_trained > 5:
                     model.load_weights(config.checkpoint_path)  # checkpoint
@@ -177,9 +152,9 @@ def run(model_builder, hparams):
             # sys.exit(0)
 
         """Full image prediction"""
-        pix_mse_val, dist_mse_val, count_mae_val = \
+        pix_mse_val, dist_mse_val, keypoint_count_mae_val, crate_count_mae_val, crate_count_failrate_val = \
             eval_full_predictions_all(base_model, val=True, output_location=config.output_location, show=config.show)
-        pix_mse_train, dist_mse_train, count_mae_train = \
+        pix_mse_train, dist_mse_train, keypoint_count_mae_train, crate_count_mae_train, crate_count_failrate_train = \
             eval_full_predictions_all(base_model, val=False, output_location=config.output_location, show=False)
 
         val_metrics = model.evaluate(val_ds, verbose=0)  # 5 metrics, as per model_ops.compile_model
@@ -192,13 +167,18 @@ def run(model_builder, hparams):
         if config.train:
             with tf.summary.create_file_writer(config.run_logs_dir + '/hparams').as_default():
                 hp.hparams(hparams, trial_id=config.model_name)
-                tf.summary.scalar('pix_mse_val', pix_mse_val, step=config.epochs_trained)
-                tf.summary.scalar('dist_mse_val', dist_mse_val, step=config.epochs_trained)
-                tf.summary.scalar('count_mae_val', count_mae_val, step=config.epochs_trained)
 
                 tf.summary.scalar('pix_mse_train', pix_mse_train, step=config.epochs_trained)
-                tf.summary.scalar('dist_mse_train', dist_mse_train, step=config.epochs_trained)
-                tf.summary.scalar('count_mae_train', count_mae_train, step=config.epochs_trained)
+                tf.summary.scalar('point_dist_mse_train', dist_mse_train, step=config.epochs_trained)
+                tf.summary.scalar('point_count_mae_train', keypoint_count_mae_train, step=config.epochs_trained)
+                tf.summary.scalar('crate_count_mae_train', crate_count_mae_train, step=config.epochs_trained)
+                tf.summary.scalar('crate_count_failrate_train', crate_count_failrate_train, step=config.epochs_trained)
+
+                tf.summary.scalar('pix_mse_val', pix_mse_val, step=config.epochs_trained)
+                tf.summary.scalar('point_dist_mse_val', dist_mse_val, step=config.epochs_trained)
+                tf.summary.scalar('point_count_mae_val', keypoint_count_mae_val, step=config.epochs_trained)
+                tf.summary.scalar('crate_count_mae_val', crate_count_mae_val, step=config.epochs_trained)
+                tf.summary.scalar('crate_count_failrate_val', crate_count_failrate_val, step=config.epochs_trained)
 
                 tf.summary.scalar('pr_value_val', pr_value_val, step=config.epochs_trained)
 
@@ -211,23 +191,6 @@ def run(model_builder, hparams):
 
     except Exception as ex:
         print(type(ex), ex, '\n\n', file=sys.stderr)
-        # raise
-
-
-def tf_init():
-    print('tf version =', tf.__version__)
-    gpus = tf.config.list_physical_devices('GPU')
-    if len(gpus) == 0:
-        print('no GPU available')
-        sys.exit(0)
-    tf.config.experimental.set_memory_growth(gpus[0], True)
-
-    # debugging
-    # tf.executing_eagerly()
-    # tf.config.experimental_functions_run_eagerly()
-    # tf.config.experimental_run_functions_eagerly(True)
-    # tf.config.experimental_functions_run_eagerly()
-    # tf.executing_eagerly()
 
 
 if __name__ == '__main__':
@@ -252,28 +215,15 @@ if __name__ == '__main__':
     hp_crop_fraction = hp.HParam('crop_fraction', hp.Discrete([0.5, 1.0]))
     hp_ds_bg_samples = hp.HParam('ds_bg_samples', hp.Discrete([200, 700, 1000]))
     hp_scale = hp.HParam('scale', hp.Discrete([0.25, 0.5]))
-
-    with tf.summary.create_file_writer('logs').as_default():
-        hp.hparams_config(
-            hparams=[
-                hp_aug_level,
-                hp_base_width,
-                hp_class_weights,
-                hp_crop_fraction,
-                hp_ds_bg_samples,
-                hp_scale,
-            ],
-            metrics=[
-                hp.Metric('pix_mse_train'),
-                hp.Metric('dist_mse_train'),
-                hp.Metric('count_mae_train'),
-
-                hp.Metric('pix_mse_val'),
-                hp.Metric('dist_mse_val'),
-                hp.Metric('count_mae_val'),
-
-                hp.Metric('pr_value_val')]
-        )
+    hparams = [
+        hp_aug_level,
+        hp_base_width,
+        hp_class_weights,
+        hp_crop_fraction,
+        hp_ds_bg_samples,
+        hp_scale,
+    ]
+    tensorboard_hparams_init(hparams)
 
     m = parameterized(recipe_51x_odd)
     hparams = {

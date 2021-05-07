@@ -174,6 +174,19 @@ def recipe_64x_odd():
     return kernels, dilations, widths
 
 
+# def recipe_64x_exp2():
+#     """
+#
+#     Dilation rate increases ideally with pooling rate
+#     :return:
+#     """
+#     dilations = [1, 2, 4, 8, 16, ] + [1, 1]
+#     widths = [2, 4, 4, 8, 8, 16] + [16, 16]
+#     kernels = [3, 3, 3, 3, 3, 2] + [3, 1]
+#
+#     return kernels, dilations, widths
+
+
 def recipe_64x_basic():
     """
 

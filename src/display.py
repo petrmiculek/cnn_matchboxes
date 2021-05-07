@@ -86,7 +86,7 @@ def display_keypoints(keypoints_categories, img, img_path, class_titles, title='
     :param title: plot title
     :param show: show interactive/sciView plot
     :param output_location: save output (=where to save)
-    :param superimpose: overlay prediction over image
+    :param superimpose: unused, only for making args consistent with display_predictions
     """
 
     if not show and output_location is None:
@@ -105,7 +105,7 @@ def display_keypoints(keypoints_categories, img, img_path, class_titles, title='
         ax.imshow(img)
         kp = keypoints[categories == i]
         if kp.size > 0:
-            ax.scatter(kp[:, 0], kp[:, 1], marker='.', color='c')
+            ax.scatter(kp[:, 0], kp[:, 1], marker='.', color='orange')
         ax.axis('off')
         ax.set_title(subplot_titles[i])
 
@@ -192,3 +192,57 @@ def plot_mse_history():
     import matplotlib.pyplot as plt
 
     history = pd.read_csv(os.path.join('outputs', 'losses_sum.csv'))
+
+
+def plot_class_weights(class_names, y_data, y_label, title):
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+
+    palette = sns.color_palette('Blues_d', len(class_names))  # [::-1]
+
+    if np.all(y_data != y_data[0]):
+        ranks = np.argsort(y_data).argsort()
+    else:
+        ranks = np.ones_like(y_data, dtype=np.int) + len(y_data) // 2
+
+    palette = list(np.array(palette)[ranks])
+
+    with sns.color_palette(palette, len(class_names)):
+        sns.set_context('talk')
+        figure = plt.figure(figsize=(10, 8))
+        sns.set_style('darkgrid')
+        gridspec = figure.add_gridspec(1, 1)
+        ax = figure.add_subplot(gridspec[0, 0])
+        sns.barplot(x=class_names, y=y_data, palette=palette)
+        ax.set_yscale('log')
+        ax.set_ylabel(y_label)
+        ax.set_xlabel('class')
+        ax.set_ylim(1 / 100, 100)
+
+        figure.suptitle(title)
+
+    for item in ax.get_xticklabels():
+        item.set_rotation(90)
+
+    figure.tight_layout()
+    from general import safestr
+    title = safestr(title)
+    figure.savefig(f'dataset_{title}.pdf', bbox_inches='tight')
+    figure.show()
+
+
+def generate_class_weights_plots(class_names, class_counts, class_weights):
+    from datasets import weights_inverse_freq, weights_effective_number
+    # uniform weights
+    plot_class_weights(class_names, np.ones(len(class_names)), 'weight', 'No weighting')
+
+    # inverse frequency weights
+    inv = np.array(list(weights_inverse_freq(class_counts).values()))
+    plot_class_weights(class_names, inv, 'weight', 'Inverse Frequency')
+
+    # effective number of samples
+    for f in [1, 10, 100, 1000, 10000, 100000]:
+        b = 1 - 1/f
+
+        eff = np.array(list(weights_effective_number(class_counts, b).values()))
+        plot_class_weights(class_names, eff, 'weight', f'Effective Number of Samples[Beta=(N-1)/N]')

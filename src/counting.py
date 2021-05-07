@@ -497,7 +497,7 @@ def count_points_lr(file_labels):
     return count
 
 
-def count_points_tlr(file_labels):
+def count_points_tlr(file_labels, quiet=True):
     """Count points in a 3-side view
 
     split top points into front (3) and back (1)
@@ -661,37 +661,53 @@ def match_top_to_bottom(corners_bottom, corners_top_front):
     return top_indices_matched_ordered, up_shift
 
 
-def count_crates(keypoints):
+def count_crates(keypoints, quiet=True):
     corners_top = get_gt_points(keypoints, 'corner-top', cv=False)
     corners_bottom = get_gt_points(keypoints, 'corner-bottom', cv=False)
-    if len(corners_top) == 4 and len(corners_bottom) == 0:
-        # print('top view (T)')
-        count_pred = count_points_t(keypoints)
-    elif len(corners_top) == 4 and len(corners_bottom) == 3:
-        # print('side-oblique view (TLR)')
-        count_pred = count_points_tlr(keypoints)
+    count_pred = -1
+    try:
+        if len(corners_top) == 4:
+            if len(corners_bottom) == 3:
+                # print('side-oblique view (TLR)')
+                count_pred = count_points_tlr(keypoints)
 
-    elif len(corners_top) == 3 and len(corners_bottom) == 3:
-        # print('side-oblique view (LR)')
-        count_pred = count_points_lr(keypoints)
+            elif len(corners_bottom) == 2:
+                # print('side-top view (TL)')
+                count_pred = count_points_tl(keypoints)
 
-    elif len(corners_top) == 4 and len(corners_bottom) == 2:
-        # print('side-top view (TL)')
-        count_pred = count_points_tl(keypoints)
+            elif len(corners_bottom) == 0:
+                # print('top view (T)')
+                count_pred = count_points_t(keypoints)
+            else:
+                # fallback: only use top view
+                count_pred = count_points_t(keypoints)
 
-    elif len(corners_top) == 2 and len(corners_bottom) == 2:
-        # print('side view (L)')
-        count_pred = count_points_l(keypoints)
-    else:
-        print('Cannot estimate view from prediction', file=sys.stderr)
-        return -1
+        elif len(corners_top) == 3:
+            if len(corners_bottom) == 3:
+                # print('side-oblique view (LR)')
+                count_pred = count_points_lr(keypoints)
+
+        elif len(corners_top) == 2:
+            if len(corners_bottom) == 2:
+                # print('side view (L)')
+                count_pred = count_points_l(keypoints)
+            else:
+                # fallback: side view again
+                count_pred = count_points_l(keypoints)
+        else:
+            if not quiet:
+                print('Cannot estimate view from prediction', file=sys.stderr)
+    except Exception as exc:
+        if not quiet:
+            print(type(exc), exc, file=sys.stderr)
+
     # print(f'pred = {count_pred}, gt = {count_gt}')
 
     return count_pred
 
 
-# def main():
-if __name__ == '__main__':
+# if __name__ == '__main__':
+def main():
     """ Load GT points """
     input_folder = 'sirky'  # + '_val'
     labels_path = os.path.join(input_folder, 'labels.csv')
@@ -916,5 +932,6 @@ if __name__ == '__main__':
             if tmp == 'q':
                 raise ValueError()
 
-# if __name__ == '__main__':
-#     main()
+
+if __name__ == '__main__':
+    main()

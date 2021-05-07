@@ -10,7 +10,11 @@ from sklearn.utils.class_weight import compute_class_weight
 
 
 def weights_sklearn(class_counts):
-    """Weigh classes (using sklearn) by their inverse frequency"""
+    """Weigh classes (using sklearn) by their inverse frequency
+
+    :param class_counts: per class number of samples
+    :return: class weights
+    """
 
     fake_ds = [np.repeat(i, cc) for i, cc in enumerate(class_counts)]
     fake_ds = np.hstack(fake_ds)
@@ -20,23 +24,33 @@ def weights_sklearn(class_counts):
 
 
 def weights_inverse_freq(class_counts):
-    """Weigh classes by their inverse frequency"""
+    """Weigh classes by their inverse frequency
+
+    :param class_counts: per class number of samples
+    :return: class weights
+    """
     class_counts = np.array(class_counts)
     class_weights = np.sum(class_counts) / (len(class_counts) * class_counts)
     return dict(enumerate(class_weights))
 
 
-def weights_effective_number(class_counts):
-    """Weight classes by effective number of samples
+def weights_effective_number(class_counts, beta=None):
+    """
+    Weight classes by effective number of samples
 
     weights are less aggresive than inverse frequency
 
     Class-Balanced Loss Based on Effective Number of Samples
     https://openaccess.thecvf.com/content_CVPR_2019/papers/Cui_Class-Balanced_Loss_Based_on_Effective_Number_of_Samples_CVPR_2019_paper.pdf
+    :param class_counts: per class number of samples
+    :param beta: manual override of beta hyperparameter, from the range [0..1]
+    :return: class weights
     """
     class_counts = np.array(class_counts)
 
-    beta = (class_counts - 1) / class_counts
+    if beta is None:
+        beta = (class_counts - 1) / class_counts
+
     effective_number = 1.0 - np.power(beta, class_counts)
     weights = (1 - beta) / effective_number
     weights = weights / np.sum(weights) * len(class_counts)
@@ -44,6 +58,9 @@ def weights_effective_number(class_counts):
     return dict(enumerate(weights))
 
 
+# a package update (gast indexing) near the end of development broke autograph transform for some functions,
+# the decorator below suppresses the warning. This failure does not break any functionality.
+@tf.autograph.experimental.do_not_convert
 def get_dataset(dataset_dir, batch_size=64, weights=None):
     """
     Get dataset, class names and class weights
@@ -52,7 +69,7 @@ def get_dataset(dataset_dir, batch_size=64, weights=None):
 
     :param dataset_dir: dataset directory
     :param batch_size: batch size
-    :param weights: how to weigh classes - 'none', 'inv_freq', 'eff_num'
+    :param weights: selection of class weights for training - 'none', 'inv_freq', 'eff_num'
     :return: Dataset, Class names, Class weights
     """
 
@@ -102,7 +119,7 @@ def get_dataset(dataset_dir, batch_size=64, weights=None):
     dataset = dataset.map(process_path, num_parallel_calls=autotune)
 
     if weights == 'eff_num':
-        class_weights = weights_effective_number(class_counts)
+        class_weights = weights_effective_number(class_counts, beta=0.999)
     elif weights == 'inv_freq':
         class_weights = weights_inverse_freq(class_counts)
     else:

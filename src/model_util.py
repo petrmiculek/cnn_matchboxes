@@ -1,11 +1,17 @@
 # stdlib
 
 # external
+import sys
+
+import tensorflow
 import tensorflow as tf
 import tensorflow_addons as tfa
 import tensorflow.keras.backend as K
 
 # local
+from tensorboard.plugins.hparams import api as hp
+
+import config
 from eval_images import eval_full_predictions_all
 from general import exp_form
 
@@ -130,22 +136,28 @@ class MSELogger(tf.keras.callbacks.Callback):
         if epoch > 0 and epoch % self.freq == 0:
             base_model = self.model.layers[1]
 
-            pix_mse_val, dist_mse_val, count_mae_val = eval_full_predictions_all(base_model, val=True, output_location=None,
-                                                                                 show=False)
-            pix_mse_train, dist_mse_train, count_mae_train = eval_full_predictions_all(base_model, val=False,
-                                                                                       output_location=None, show=False)
+            pix_mse_val, dist_mse_val, keypoint_count_mae_val, crate_count_mae_val, crate_count_failrate_val = \
+                eval_full_predictions_all(base_model, val=True, output_location=None, show=False)
+            pix_mse_train, dist_mse_train, keypoint_count_mae_train, crate_count_mae_train, crate_count_failrate_train = \
+                eval_full_predictions_all(base_model, val=False, output_location=None, show=False)
 
             print('pix_mse:', exp_form(pix_mse_train), exp_form(pix_mse_val))
             print('dist_mse:', exp_form(dist_mse_train), exp_form(dist_mse_val))
-            print('count_mae: {:0.2g} {:0.2g}'.format(count_mae_train, count_mae_val))
+            print('keypoint_count_mae: {:0.2g} {:0.2g}'.format(keypoint_count_mae_train, keypoint_count_mae_val))
+            print('crate_count_mae: {:0.2g} {:0.2g}'.format(crate_count_mae_train, crate_count_mae_val))
+            print('crate_count_failrate: {:0.2g} {:0.2g}'.format(crate_count_failrate_train, crate_count_failrate_val))
 
             tf.summary.scalar('pix_mse_train', pix_mse_train, step=epoch)
-            tf.summary.scalar('dist_mse_train', dist_mse_train, step=epoch)
-            tf.summary.scalar('count_mae_train', count_mae_train, step=epoch)
+            tf.summary.scalar('point_dist_mse_train', dist_mse_train, step=epoch)
+            tf.summary.scalar('point_count_mae_train', keypoint_count_mae_train, step=epoch)
+            tf.summary.scalar('crate_count_mae_train', crate_count_mae_train, step=epoch)
+            tf.summary.scalar('crate_count_failrate_train', crate_count_failrate_train, step=epoch)
 
             tf.summary.scalar('pix_mse_val', pix_mse_val, step=epoch)
-            tf.summary.scalar('dist_mse_val', dist_mse_val, step=epoch)
-            tf.summary.scalar('count_mae_val', count_mae_val, step=epoch)
+            tf.summary.scalar('point_dist_mse_val', dist_mse_val, step=epoch)
+            tf.summary.scalar('point_count_mae_val', keypoint_count_mae_val, step=epoch)
+            tf.summary.scalar('crate_count_mae_val', crate_count_mae_val, step=epoch)
+            tf.summary.scalar('crate_count_failrate_val', crate_count_failrate_val, step=epoch)
 
 
 class LearningRateLogger(tf.keras.callbacks.Callback):
@@ -224,3 +236,33 @@ class RandomColorDistortion(tf.keras.layers.Layer):
         }
 
     # from_config() does not need to be reimplemented
+
+
+def tf_init():
+    print('tf version =', tf.__version__)
+    gpus = tf.config.list_physical_devices('GPU')
+    if len(gpus) == 0:
+        print('no GPU available')
+        sys.exit(0)
+    tf.config.experimental.set_memory_growth(gpus[0], True)
+
+
+def tensorboard_hparams_init(hparams):
+    with tf.summary.create_file_writer(config.logs_root).as_default():
+        hp.hparams_config(
+            hparams,
+            metrics=[
+                hp.Metric('pix_mse_train'),
+                hp.Metric('point_dist_mse_train'),
+                hp.Metric('point_count_mae_train'),
+                hp.Metric('crate_count_mae_train'),
+                hp.Metric('crate_count_failrate_train'),
+
+                hp.Metric('pix_mse_val'),
+                hp.Metric('point_dist_mse_val'),
+                hp.Metric('point_count_mae_val'),
+                hp.Metric('crate_count_mae_val'),
+                hp.Metric('crate_count_failrate_val'),
+
+                hp.Metric('pr_value_val')]
+        )

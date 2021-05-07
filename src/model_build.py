@@ -60,7 +60,7 @@ def load_model(model_name, load_weights=True):
 
 def get_callbacks():
     """ TensorBoard loggging """
-    config.run_logs_dir = os.path.join('logs', 'bg{}'.format(config.dataset_size), config.model_name)
+    config.run_logs_dir = os.path.join(config.logs_root, 'bg{}'.format(config.dataset_size), config.model_name)
     os.makedirs(config.run_logs_dir, exist_ok=True)
     file_writer = tf.summary.create_file_writer(config.run_logs_dir + "/metrics")
     file_writer.set_as_default()
@@ -114,13 +114,13 @@ def build_new_model(model_factory, hparams, name_suffix=''):
     return base_model, model, aug_model
 
 
-def augmentation(aug_level=1, crop_to=64, ds_dim=64):
+def augmentation(aug_level=2, crop_to=64, ds_dim=64):
     """
 
     RandomZoom
     A positive value means zooming out, while a negative value means zooming in.
 
-    :param aug_level: augmentation level 0, 1, 2, 3
+    :param aug_level: augmentation level 0, 1, 2, 3; default=2=values mentioned in text
     :param crop_to: output dimension == native base_model input dimension
     :param ds_dim: input dimension == dataset dimension
     :return: Keras sequential model
@@ -140,12 +140,12 @@ def augmentation(aug_level=1, crop_to=64, ds_dim=64):
     # parameters for augmentation-levels 0..3
     brightness = [0.0, 0.1, 0.3, 0.5]
     contrast = [(1.0, 1.0 + e), (0.75, 1.25), (0.5, 1.5), (0.35, 2.0)]
-    hue = [0, 0.1, 0.2, 0.4]  # ok
+    hue = [0, 0.1, 0.2, 0.4]
     saturation = [(1.0, 1.0 + e), (0.75, 1.25), (0.5, 1.5), (0.1, 1.5)]
     zoom = [(0.0, 0.0 + e), (-0.1, +0.1), (-0.25, 0.25), (-0.5, +0.5)]
     # aug-level independent parameters
     rotation = 1 / 16  # =rot22.5°
-    translation = [0, 1 / 64, 2 / 64, 4 / 64, 6/64, 8/64]  # e.g. 4 pixels for a 64x model
+    translation = [0, 1 / 64, 2 / 64, 4 / 64]  # e.g. 4 pixels for a 64x model
 
     if aug_level > 0:
         aug_model.add(RandomFlip("horizontal"))

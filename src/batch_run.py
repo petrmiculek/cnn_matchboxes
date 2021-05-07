@@ -12,7 +12,8 @@ sys.path.extend(['/home/petrmiculek/Code/light_matches',
                  '/home/petrmiculek/Code/light_matches/src_util'])
 
 # local
-from training_run import run, tf_init
+from training_run import run
+from model_util import tensorboard_hparams_init, tf_init
 from models import *
 from models_old import *
 import config
@@ -155,27 +156,15 @@ if __name__ == '__main__':
     hp_aug_level = hp.HParam('aug_level', hp.Discrete([0, 1, 2, 3]))
     hp_scale = hp.HParam('scale', hp.Discrete([0.25, 0.5]))
     hp_crop_fraction = hp.HParam('crop_fraction', hp.Discrete([0.5, 1.0]))
-    with tf.summary.create_file_writer('logs').as_default():
-        hp.hparams_config(
-            hparams=[
-                hp_aug_level,
-                hp_base_width,
-                hp_class_weights,
-                hp_crop_fraction,
-                hp_ds_bg_samples,
-                hp_scale,
-            ],
-            metrics=[
-                hp.Metric('pix_mse_train'),
-                hp.Metric('dist_mse_train'),
-                hp.Metric('count_mae_train'),
-
-                hp.Metric('pix_mse_val'),
-                hp.Metric('dist_mse_val'),
-                hp.Metric('count_mae_val'),
-
-                hp.Metric('pr_value_val')]
-        )
+    hparams = [
+        hp_aug_level,
+        hp_base_width,
+        hp_class_weights,
+        hp_crop_fraction,
+        hp_ds_bg_samples,
+        hp_scale,
+    ]
+    tensorboard_hparams_init(hparams)
     """
     for m in [parameterized(recipe_32x_odd),
               parameterized(recipe_32x_flat5),
@@ -374,17 +363,22 @@ if __name__ == '__main__':
     # config.batch_size = 128
     config.epochs = 50
     m = parameterized(recipe_64x_odd)
-    for s in hp_scale.domain.values:
-        for ccf in [0.5, 1.0]:
-            config.scale = s
-            config.center_crop_fraction = ccf
 
-            hparams = {
-                'base_width': 16,
-                'class_weights': 'none',
-                'aug_level': 2,
-                'ds_bg_samples': config.dataset_size,
-                'scale': config.scale,
-                'crop_fraction': config.center_crop_fraction,
-            }
-            run(m, hparams)
+    for s in [0.25]:
+        for ccf in [1.0]:
+            # for aug_level in [1, 2, 3]:
+            for base_width in [8, 16]:
+
+                config.scale = s
+                config.center_crop_fraction = ccf
+                config.augment = 2
+
+                hparams = {
+                    'base_width': base_width,
+                    'class_weights': 'eff_num',
+                    'aug_level': config.augment,
+                    'ds_bg_samples': config.dataset_size,
+                    'scale': config.scale,
+                    'crop_fraction': config.center_crop_fraction,
+                }
+                run(m, hparams)

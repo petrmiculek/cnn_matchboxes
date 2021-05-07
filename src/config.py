@@ -41,3 +41,6 @@ center_crop_fraction = 1.0
 checkpoint_path = None
 output_location = None
 run_logs_dir = None
+
+logs_root = 'logs'
+datasets_root = '/data/datasets/'

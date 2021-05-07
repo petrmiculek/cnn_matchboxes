@@ -20,7 +20,7 @@ from eval_images import \
     crop_to_prediction
 from eval_samples import evaluate_model, show_layer_activations
 from display import display_predictions, display_keypoints
-from src_util.counting import count_points_tlr, get_gt_points, count_crates
+from counting import count_points_tlr, get_gt_points, count_crates
 
 if __name__ == '__main__':
     config.train = False
@@ -42,12 +42,16 @@ if __name__ == '__main__':
     # load_model_name = 'dilated_32x_exp22021-03-28-16-38-11_full'  # /data/datasets/64x_050s_500bg
     # load_model_name = 'dilated_64x_exp2_2021-03-29-15-58-47_full'  # /data/datasets/128x_050s_1000bg
     # load_model_name = '32x_d3-5-7-1-1_2021-04-19-14-25-48_full'  # /data/datasets/64x_025s_1000bg
-    load_model_name = '64x_d1-3-5-7-9-11-1-1_2021-04-23-14-10-33_full'  # /data/datasets/128x_050s_1000bg
+    # load_model_name = '64x_d1-3-5-7-9-11-1-1_2021-04-23-14-10-33_full'  # /data/datasets/128x_050s_1000bg
+    load_model_name = '64x_d1-3-5-7-9-11-1-1_2021-04-30-05-56-46_full'  # /data/datasets/128x_050s_1000bg
+
     # load_model_name = '99x_d1-3-5-7-9-11-13-1_2021-04-29-11-43-25_full'  # /data/datasets/128x_050s_1000bg
     config.model_name = load_model_name + '_reloaded'
 
     try:
-        dim = int(load_model_name.split('x_')[0])
+        dim_str = load_model_name.split('x_')[0]
+        dim_str = ''.join(c for c in dim_str if c.isdigit())
+        dim = int(dim_str)
     except IndexError:
         print('', file=sys.stderr)
         dim = 64
@@ -56,7 +60,7 @@ if __name__ == '__main__':
     config.dataset_dim = 2 * dim
 
     base_model, model, aug_model = model_build.load_model(load_model_name, load_weights=True)
-    config.epochs_trained = 123  #
+    config.epochs_trained = 123  # avoid epoch number confusion in tensorboard
 
     dataset_dir = '/data/datasets/{}x_{:03d}s_{}bg'\
         .format(config.dataset_dim, int(100 * config.scale), config.dataset_size)
@@ -65,11 +69,11 @@ if __name__ == '__main__':
     train_ds, config.class_names, _ = get_dataset(dataset_dir)
 
     if False:
-        mse_pix_val, mse_val, count_mae_val = \
-            full_prediction_all(base_model, val=True, output_location=config.output_location, show=config.show)
+        mse_pix_val, mse_val, keypoint_count_mae_val, crate_count_mae_val = \
+            eval_full_predictions_all(base_model, val=True, output_location=config.output_location, show=config.show)
 
-        mse_pix_train, mse_train, count_mae = \
-            full_prediction_all(base_model, val=False, output_location=config.output_location, show=config.show)
+        mse_pix_train, mse_train, keypoint_count_mae_train, crate_count_mae_train = \
+            eval_full_predictions_all(base_model, val=False, output_location=config.output_location, show=config.show)
 
         val_accu = evaluate_model(model, val_ds, val=True, output_location=config.output_location,
                                       show=config.show, misclassified=False)
@@ -112,7 +116,8 @@ if __name__ == '__main__':
 
     if True:
         show = True
-        output_location = 'outputs_counting'
+        output_location = os.path.join('outputs', base_model.name, 'crate_count')
+        os.makedirs(output_location, exist_ok=True)
 
         images_dir = 'sirky'
         file = os.listdir(images_dir)[-1]

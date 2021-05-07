@@ -1,7 +1,7 @@
 # stdlib
 import os
 import sys
-from math import floor, ceil, log10
+from math import floor, ceil
 
 # external
 import cv2 as cv
@@ -14,10 +14,9 @@ from skimage.measure import label as skimage_label
 # local
 import config
 from general import lru_cache
-from labels import load_labels, resize_labels
+from labels import get_gt_count, load_labels, resize_labels
 from logs import log_mean_square_error_csv
 from display import display_predictions
-from src_util.general import timing
 
 
 def load_image(img_path, scale=1.0, center_crop_fraction=1.0):
@@ -214,7 +213,18 @@ def mse_pixelwise(predictions, img_path, file_labels):
     return mse_sum, mse_dict
 
 
-def mse_pointwise(predictions, file_labels, show=False):
+def mse_pointwise(predictions, img, keypoints, kp_categories, file_labels, show=False):
+    """Keypoint-wise Mean Square Error
+
+    :param predictions:
+    :param img:
+    :param keypoints:
+    :param kp_categories:
+    :param file_labels:
+    :param show:
+    :return:
+    """
+
     def mse_value(pts_gt, pts_pred):
         false_positive_penalty = 1e4
         false_negative_penalty = 1e4
@@ -243,27 +253,25 @@ def mse_pointwise(predictions, file_labels, show=False):
     mse_cat_list = []
 
     # per-category distance mse for plotting
-    mse_cat_dict = {'background': 0.0}
+    dist_mse_cat_dict = {'background': 0.0}
 
     # keypoint counting mae
     count_error_categories = []
 
-    pts_pred, pts_pred_categories = prediction_to_keypoints(predictions)
-
     if show:
         fig, axes = plt.subplots(3, 3, figsize=(12, 10))
 
-    for cat in range(predictions.shape[2]):
+    for i, cat in enumerate(config.class_names):
         if show:
-            ax = axes[cat // 3, cat % 3]
-            ax.set_title(config.class_names[cat])
-            ax.imshow(predictions[:, :, cat])
+            ax = axes[i // 3, i % 3]
+            ax.set_title(cat)
+            ax.imshow(predictions[:, :, i])
 
-        if cat == 0:
+        if i == 0:
             continue
 
-        pts_gt_cat = file_labels[file_labels.category == config.class_names[cat]][['x', 'y']].to_numpy()
-        pts_pred_cat = pts_pred[pts_pred_categories == cat]
+        pts_gt_cat = file_labels[file_labels.category == cat][['x', 'y']].to_numpy()
+        pts_pred_cat = keypoints[kp_categories == i]
 
         mse = mse_value(pts_gt_cat, pts_pred_cat)
 
@@ -274,42 +282,30 @@ def mse_pointwise(predictions, file_labels, show=False):
             if len(pts_pred_cat) > 0:
                 ax.scatter(pts_pred_cat[:, 0], pts_pred_cat[:, 1], marker='x')
 
-            ax.set_title('{}: {:.2e}'.format(config.class_names[cat], mse))
+            ax.set_title('{}: {:.2e}'.format(cat, mse))
 
-        mse_cat_dict[config.class_names[cat]] = mse
+        dist_mse_cat_dict[cat] = mse
         mse_cat_list.append(mse)
         count_error_categories.append(pts_pred_cat.shape[0] - pts_gt_cat.shape[0])
 
-    mse_total = np.mean(mse_cat_list)
-    count_mae = np.sum(np.abs(count_error_categories))
+    dist_mse_total = np.mean(mse_cat_list)
+    keypoint_count_mae = np.sum(np.abs(count_error_categories))
 
     if show:
         fig.legend(['ground-truth', 'prediction'])
-        if len(pts_pred) > 0 and np.array(pts_pred).ndim == 2:
-            axes[2, 2].scatter(pts_pred[:, 0], pts_pred[:, 1], marker='*', color='r')
+        if len(keypoints) > 0 and np.array(keypoints).ndim == 2:
+            axes[2, 2].scatter(keypoints[:, 0], keypoints[:, 1], marker='*', color='orange')
 
-        axes[2, 2].set_xlim(0, predictions.shape[1])
-        axes[2, 2].set_ylim(0, predictions.shape[0])
+        axes[2, 2].set_xlim(0, img.shape[1])
+        axes[2, 2].set_ylim(0, img.shape[0])
         axes[2, 2].invert_yaxis()
+        axes[2, 2].imshow(img)
 
-        # original image
-        img_path = os.path.join('sirky', img_file_name)
-        if not os.path.isfile(img_path):
-            img_path = os.path.join('sirky_val', img_file_name)
-
-        if os.path.isfile(img_path):
-            img, _ = load_image(img_path, config.scale, config.center_crop_fraction)
-            img, _ = crop_to_prediction(img, predictions.shape)
-            axes[2, 2].imshow(img)
-        else:
-            print('not found:', img_path)
-            pass
-
-        fig.suptitle('{}: {:.2e}'.format(img_file_name, mse_total))
+        fig.suptitle('{}: {:.2e}'.format(img_file_name, dist_mse_total))
         fig.tight_layout()
         fig.show()
 
-    return mse_total, mse_cat_dict, count_mae
+    return dist_mse_total, dist_mse_cat_dict, keypoint_count_mae
 
 
 def prediction_to_keypoints(predictions, min_blob_size=None, prediction_threshold=0.9):
@@ -363,8 +359,7 @@ def prediction_to_keypoints(predictions, min_blob_size=None, prediction_threshol
     return points, points_categories  # , blob_sizes
 
 
-def eval_full_prediction(base_model, file_labels, img_path, output_location=None,
-                         show=True, maxes_only=False, undecided_only=False):
+def eval_full_prediction(base_model, file_labels, img_path, output_location=None, show=True):
     """Show predicted heatmaps for full image and evaluate prediction
 
     :param base_model:
@@ -372,9 +367,8 @@ def eval_full_prediction(base_model, file_labels, img_path, output_location=None
     :param img_path:
     :param output_location:
     :param show:
-    :param maxes_only: Show only the top predicted category per point.
-    :param undecided_only: Show only predictions that were
     """
+    from counting import count_crates  # avoids circular import dependencies
 
     img, orig_size = load_image(img_path, config.scale, config.center_crop_fraction)
 
@@ -384,7 +378,7 @@ def eval_full_prediction(base_model, file_labels, img_path, output_location=None
               f'image_path:{img_path}\n'
         raise UserWarning(err)
 
-    predictions = make_prediction(base_model, img, maxes_only, undecided_only)
+    predictions = make_prediction(base_model, img)
 
     # Model prediction is cropped, adjust image accordingly
     img, model_crop_delta = crop_to_prediction(img, predictions.shape)
@@ -393,40 +387,56 @@ def eval_full_prediction(base_model, file_labels, img_path, output_location=None
 
     pix_mse = -1
     dist_mse = -1
-    count_mae = np.nan
-    if undecided_only:
-        plots_title = 'undecided'
-    elif maxes_only:
-        plots_title = 'maxes'
-    else:
-        try:
-            # pixel-wise
-            pix_mse, pix_mse_categories = mse_pixelwise(predictions, img_path, file_labels)
+    keypoint_count_mae = np.nan
+    crate_count_error = np.nan
+    plots_title = ''
 
-            # point-wise
-            dist_mse, dist_mse_categories, count_mae = mse_pointwise(predictions, file_labels, show=show)
+    try:
+        crate_count_gt = get_gt_count(img_path)
 
-            category_titles = ['{}: {:.1e}'.format(cat, cat_mse) for cat, cat_mse in
-                               dist_mse_categories.items()]
-            plots_title = 'pix_mse: {:.1e}, dist_mse: {:.1e}, count_mae: {:0.2g}'.format(pix_mse, dist_mse, count_mae)
+        # pixel-wise
+        pix_mse, pix_mse_categories = mse_pixelwise(predictions, img_path, file_labels)
 
-            show_mse_pixelwise_location(predictions, img, img_path,
-                                        file_labels, output_location=output_location, show=False)
-        except Exception as ex:
-            plots_title = ''
-            print(ex, file=sys.stderr)
+        keypoints_pred, kp_pred_categories = prediction_to_keypoints(predictions)
+
+        # keypoint-wise
+        dist_mse, dist_mse_categories, keypoint_count_mae = \
+            mse_pointwise(predictions, img, keypoints_pred, kp_pred_categories, file_labels, show=show)
+
+        # crate-counting
+        df = pd.DataFrame(np.c_[keypoints_pred, kp_pred_categories], columns=['x', 'y', 'category'])
+        label_dict = dict(enumerate(config.class_names))
+        df['category'] = df['category'].map(label_dict)
+        crate_count_pred = count_crates(df, quiet=True)
+        if crate_count_pred != -1:
+            crate_count_error = np.abs(crate_count_pred - crate_count_gt)
+
+        category_titles = ['{}: {:.1e}'.format(cat, cat_mse) for cat, cat_mse in dist_mse_categories.items()]
+        plots_title = f'pix_mse: {pix_mse:.1e}, dist_mse: {dist_mse:.1e}, count_mae: {keypoint_count_mae:0.2g}, ' \
+                      f'Pred: {crate_count_pred}, GT: {crate_count_gt}'
+
+        show_mse_pixelwise_location(predictions, img, img_path, file_labels, output_location, show=False)
+    except Exception as ex:
+        print(ex, file=sys.stderr)
 
     assert len(category_titles) >= 8, '{}, {}, {}'.format(len(category_titles), dist_mse, pix_mse)
     # save_predictions_cv(predictions, img, img_path, output_location)
     display_predictions(predictions, img, img_path, category_titles, plots_title,
                         show=show, output_location=output_location, superimpose=True)
 
-    return pix_mse, dist_mse, count_mae
+    return pix_mse, dist_mse, keypoint_count_mae, crate_count_error
 
 
-def eval_full_predictions_all(base_model, val=True,
-                              undecided_only=False, maxes_only=False,
-                              output_location=None, show=True):
+def eval_full_predictions_all(base_model, val=True, output_location=None, show=True):
+    """Evaluate prediction on all images in the training/validation dataset
+
+    :param base_model:
+    :param val:
+    :param output_location:
+    :param show:
+    :return:
+    """
+
     images_dir = 'sirky' + '_val' * val
     labels = load_labels(images_dir + os.sep + 'labels.csv', use_full_path=False, keep_bg=False)
     labels = resize_labels(labels, config.scale, config.train_dim - 1, config.center_crop_fraction)
@@ -438,21 +448,26 @@ def eval_full_predictions_all(base_model, val=True,
     pix_mse_list = []
     dist_mse_list = []
     count_mae_list = []
+    crate_count_err_list = []
     for file in pd.unique(labels['image']):
         file_labels = labels[labels.image == file]
-        pix_mse, dist_mse, count_mae = \
+        pix_mse, dist_mse, keypoint_count_mae, crate_count_err = \
             eval_full_prediction(base_model, file_labels, img_path=images_dir + os.sep + file,
-                                 output_location=output_location, show=show,
-                                 undecided_only=undecided_only, maxes_only=maxes_only)
+                                 output_location=output_location, show=show)
 
         pix_mse_list.append(pix_mse)
         dist_mse_list.append(dist_mse)
-        count_mae_list.append(count_mae)
+        count_mae_list.append(keypoint_count_mae)
+        crate_count_err_list.append(crate_count_err)
 
-    pix_mse = np.mean(pix_mse_list)
-    dist_mse = np.mean(dist_mse_list)
-    count_mae = np.mean(count_mae_list) if len(count_mae_list) > 0 else 0
-    return pix_mse, dist_mse, count_mae
+    pix_mse = np.nanmean(pix_mse_list)
+    dist_mse = np.nanmean(dist_mse_list)
+    keypoint_count_mae = np.nanmean(count_mae_list) if len(count_mae_list) > 0 else 0
+    crate_count_mae = np.nanmean(crate_count_err_list)
+    crate_count_err_list = np.array(crate_count_err_list)
+    crate_count_failrate = np.sum(np.isnan(crate_count_err_list)) / len(crate_count_err_list)
+
+    return pix_mse, dist_mse, keypoint_count_mae, crate_count_mae, crate_count_failrate
 
 
 def show_mse_pixelwise_location(predictions, img, img_path, file_labels, output_location=None, show=True):
@@ -489,7 +504,7 @@ def show_mse_pixelwise_location(predictions, img, img_path, file_labels, output_
         distance_layers = list(map(dst_pt2grid, cat_labels))
         distance_layers = np.vstack([distance_layers])
 
-        # normalizing ~~
+        # normalizing
         distance_layers = distance_layers / np.sqrt(np.max(distance_layers))
 
         min_distance = np.min(distance_layers, axis=0)  # minimum distance to any keypoint
