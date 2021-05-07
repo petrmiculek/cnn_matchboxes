@@ -30,11 +30,6 @@ from tensorboard.plugins.hparams import api as hp
 # import matplotlib.cm as cm
 # from IPython.display import Image, display
 
-# hacky, just for profiling
-sys.path.extend(['/home/petrmiculek/Code/light_matches',
-                 '/home/petrmiculek/Code/light_matches/src',
-                 '/home/petrmiculek/Code/light_matches/src_util'])
-
 # local files
 from models import *
 import model_build
@@ -57,7 +52,6 @@ def run(model_builder, hparams):
         config.augment = True
         config.train = True
         config.show = False
-        config.use_weights = False
         config.scale = 0.5
         config.center_crop_fraction = 0.5
         config.batch_size = 128
@@ -201,7 +195,6 @@ if __name__ == '__main__':
     # train dim decided by model
     config.dataset_dim = 128
     config.augment = 3
-    config.use_weights = False
     config.show = False
     config.scale = 0.25
     config.center_crop_fraction = 0.5

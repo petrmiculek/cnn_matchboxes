@@ -116,7 +116,7 @@ def closest_pairs_greedy(pts_from, pts_to, indices_only=False):
     # assert len(dists.shape) == 2
     fill_value = np.max(dists) + 1
     if indices_only:
-        ret = np.zeros((pts_from.shape[0]))
+        ret = np.zeros((pts_from.shape[0]), dtype=np.int)
     else:
         ret = np.zeros_like(pts_from)
 
@@ -649,13 +649,17 @@ def match_top_to_bottom(corners_bottom, corners_top_front):
     pts_bottom_shifted = corners_bottom + up_shift
 
     # connect shifted bottom to closest top
-    top_indices_matched_ordered = cdist(pts_bottom_shifted, corners_top_front).argmin(axis=1)
+    # top_indices_matched_ordered = cdist(pts_bottom_shifted, corners_top_front).argmin(axis=1)
+    # print(f'old: {top_indices_matched_ordered}')
+
+    top_indices_matched_ordered = closest_pairs_greedy(pts_bottom_shifted, corners_top_front, indices_only=True)
+    # print(f'new: {top_indices_matched_ordered_}')
 
     # check unique indices
     idx_len = top_indices_matched_ordered.shape[0]
     expected_sum = (idx_len * (idx_len - 1) / 2)
     if top_indices_matched_ordered.sum() != expected_sum:
-        print(top_indices_matched_ordered.sum(), expected_sum)
+        # print('old, new, target:', top_indices_matched_ordered.sum(), top_indices_matched_ordered_.sum(), expected_sum)
         raise UserWarning(f'Top-bottom matching failed - non-unique pairs: {top_indices_matched_ordered}')
 
     return top_indices_matched_ordered, up_shift
@@ -713,8 +717,8 @@ def main():
     labels_path = os.path.join(input_folder, 'labels.csv')
     labels = load_labels(labels_path, use_full_path=False, keep_bg=False)
 
-    scale = 0.25
-    center_crop_fraction = 1.0
+    scale = 0.5
+    center_crop_fraction = 0.8
     model_crop_delta = 63
     labels = resize_labels(labels, scale, model_crop_delta=model_crop_delta, center_crop_fraction=center_crop_fraction)
 

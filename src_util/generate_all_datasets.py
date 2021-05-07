@@ -3,11 +3,10 @@ import sys
 
 from src_util.generate_dataset import images_to_dataset
 
-# from src_util.images_labelled import defaultdict
+curr_path = os.getcwd()
+sys.path.extend([curr_path] + [d for d in os.listdir() if os.path.isdir(d)])
 
-sys.path.extend(['/home/petrmiculek/Code/light_matches',
-                 '/home/petrmiculek/Code/light_matches/src',
-                 '/home/petrmiculek/Code/light_matches/src_util'])
+datasets_root = 'datasets'
 
 dims = [32, 64, 128]
 scales = [25, 50]
@@ -17,7 +16,7 @@ for dim in dims:
     for scale in scales:
         for close, far in background_sampling:
             for val in [False, True]:
-                out_folder = '/data/datasets/{}x_{:03d}s_{}bg{}'\
+                out_folder = datasets_root = '/{}x_{:03d}s_{}bg{}'\
                              .format(dim, scale, close + far, '_val' if val else '')
                 if os.path.isdir(out_folder):
                     print('Skipping existing:', out_folder)

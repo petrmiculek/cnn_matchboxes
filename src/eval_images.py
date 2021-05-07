@@ -463,9 +463,8 @@ def eval_full_predictions_all(base_model, val=True, output_location=None, show=T
     pix_mse = np.nanmean(pix_mse_list)
     dist_mse = np.nanmean(dist_mse_list)
     keypoint_count_mae = np.nanmean(count_mae_list) if len(count_mae_list) > 0 else 0
-    crate_count_mae = np.nanmean(crate_count_err_list)
-    crate_count_err_list = np.array(crate_count_err_list)
     crate_count_failrate = np.sum(np.isnan(crate_count_err_list)) / len(crate_count_err_list)
+    crate_count_mae = np.nanmean(crate_count_err_list) if crate_count_failrate < 1 else np.nan
 
     return pix_mse, dist_mse, keypoint_count_mae, crate_count_mae, crate_count_failrate
 

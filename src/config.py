@@ -43,4 +43,4 @@ output_location = None
 run_logs_dir = None
 
 logs_root = 'logs'
-datasets_root = '/data/datasets/'
+datasets_root = 'datasets'
