@@ -6,17 +6,20 @@ import os
 # -
 
 
-def log_model_info(model, output_location=None):
+def log_model_info(model, output_location, saved_models_location):
     """Save model architecture plot (image) and model config (json)
 
+    :param saved_models_location:
     :param model:
     :param output_location:
     :return:
     """
     from tensorflow.keras.utils import plot_model
+
     line_length = 100
 
     if len(model.layers) == 2:
+        # augmentation model + base model
         aug = model.layers[0]
         base_model = model.layers[1]
         aug.summary(line_length=line_length)
@@ -32,8 +35,10 @@ def log_model_info(model, output_location=None):
     try:
         with open(os.path.join(output_location, 'model_config.json'), mode='x') as json_out:
             json_out.write(model.to_json())
+        with open(os.path.join(saved_models_location, f'{model.name}.json'), mode='x') as json_out:
+            json_out.write(model.to_json())
     except FileExistsError:
-        print('Model config already exists, did not overwrite.')
+        print('I: Model config already exists, did not overwrite.')
 
 
 def log_mean_square_error_csv(model_name, img_path, error_sum, category_losses):

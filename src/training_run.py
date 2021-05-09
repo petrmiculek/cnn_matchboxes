@@ -63,7 +63,7 @@ def run(model_builder, hparams):
     try:
         dataset_dir = '{}x_{:03d}s_{}bg' \
             .format(config.dataset_dim, int(100 * config.scale), config.dataset_size)
-        dataset_dir = os.path.join(config.datasets_root, dataset_dir)
+        dataset_dir = os.path.join(config.datasets_dir, dataset_dir)
         print('Loading dataset from:', dataset_dir)
         config.checkpoint_path = get_checkpoint_path()
 
@@ -82,10 +82,10 @@ def run(model_builder, hparams):
 
         else:
             load_model_name = 'dilated_64x_exp2_2021-03-29-15-58-47_full'  # /data/datasets/128x_050s_1000bg
-            model_config_path = os.path.join('outputs', load_model_name, 'model_config.json')
-            weights_path = os.path.join('models_saved', load_model_name)
+            # model_config_path = os.path.join('outputs', load_model_name, 'model_config.json')
+            # weights_path = os.path.join('models_saved', load_model_name)
 
-            base_model, model, aug_model = model_build.load_model(model_config_path, weights_path)
+            base_model, model, aug_model = model_build.load_model(load_model_name)
             callbacks = model_build.get_callbacks()
             config.epochs_trained = 123
 
@@ -99,8 +99,7 @@ def run(model_builder, hparams):
         out_stream = open(os.path.join(config.output_location, 'stdout.txt'), 'a')
         sys.stdout = DuplicateStream(sys.stdout, out_stream)
 
-        log_model_info(model, config.output_location)
-
+        log_model_info(model, config.output_location, config.models_saved_dir)
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
         tf.get_logger().setLevel('ERROR')  # suppress warnings about early-stopping and model-checkpoints
 

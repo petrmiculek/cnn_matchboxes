@@ -163,231 +163,30 @@ if __name__ == '__main__':
         hp_scale,
     ]
     tensorboard_hparams_init(hparams)
-    """
-    for m in [parameterized(recipe_32x_odd),
-              parameterized(recipe_32x_flat5),
-              parameterized(recipe_32x_exp2),
-              parameterized(recipe_32x_d1to5),
-              ]:
-        for width in hp_base_width.domain.values:
-            hparams = {
-                'base_width': width,
 
-                'augmentation': config.augment,
-                'ds_bg_samples': config.dataset_size,
-                'scale': config.scale,
-                'crop_fraction': config.center_crop_fraction,
-                # 'tail_downscale': 2  # try if logging to tb fails
-            }
-            run(m, hparams)
-    """
-    """
-    for m in [parameterized(recipe_64x_odd),
-              parameterized(recipe_64x_basic),
-              ]:
-        for width in hp_base_width.domain.values:
-            hparams = {
-                'base_width': width,
+    config.datasets_root = 'datasets'
 
-                'augmentation': config.augment,
-                'ds_bg_samples': config.dataset_size,
-                'scale': config.scale,
-                'crop_fraction': config.center_crop_fraction,
-                # 'tail_downscale': 2  # try if logging to tb fails
-            }
-            run(m, hparams)
-    """
-    # config.dataset_dim = 64
-    # config.epochs = 75
-    """
-    for m in [parameterized(recipe_32x_odd)]:
-        for width in hp_base_width.domain.values:
-            for augmentation in hp_aug_level.domain.values:
-                for scale in hp_scale.domain.values:
-                    hparams = {
-                        'base_width': width,
-                        'aug_level': augmentation,
-                        'scale': scale,
-
-                        'ds_bg_samples': config.dataset_size,
-                        'crop_fraction': config.center_crop_fraction,
-                        'non_cropping_conv': True,
-                    }
-                    run(m, hparams)
-    """
-    """
-
-    for m in [parameterized(recipe_32x_d7531),
-              parameterized(recipe_32x_flat5), ]:
-        for width in hp_base_width.domain.values:
-            hparams = {
-                'base_width': width,
-                'augmentation': config.augment,
-                'scale': config.scale,
-
-                'ds_bg_samples': config.dataset_size,
-                'crop_fraction': config.center_crop_fraction,
-            }
-            run(m, hparams)
-
-    """
-    """
-    # config.epochs = 50
-    # config.dataset_dim = 128
-    # config.scale = 0.25
-    # config.batch_size = 64
-
-    # for m in [parameterized(recipe_64x_odd)]:
-    #     # for scale in hp_scale.domain.values:
-    #     for aug_level in [0, 4, 5]:
-    #         hparams = {
-    #             'base_width': 16,
-    #             'aug_level': aug_level,
-    #             'scale': config.scale,
-    #             'ds_bg_samples': config.dataset_size,
-    #             'crop_fraction': config.center_crop_fraction,
-    #         }
-    #         run(m, hparams)
-    """
-    """
-    for m in [parameterized(recipe_64x_odd)]:
-        for width in hp_base_width.domain.values:
-            for augmentation in [1, 2, 3]:
-                hparams = {
-                    'base_width': 16,
-                    'aug_level': augmentation,
-                    'scale': config.scale,
-
-                    'ds_bg_samples': config.dataset_size,
-                    'crop_fraction': config.center_crop_fraction,
-                }
-                run(m, hparams)
-    """
-    """
-
-    config.dataset_dim = 64
-
-    models = [
-        parameterized(recipe_32x_odd),
-        # parameterized(recipe_32x_exp2),
-        # parameterized(recipe_32x_flat5),
-        # parameterized(recipe_32x_d1to5),
-              ]
-
-    # for crop_fraction in hp_crop_fraction.domain.values:
-    for model in models:
-        for scale in hp_scale.domain.values:
-            for width in hp_base_width.domain.values:
-                for aug_level in [2, 3]:
-                    config.scale = scale
-                    config.augment = aug_level
-                    hparams = {
-                        'base_width': width,
-                        'class_weights': 'none',
-                        'aug_level': aug_level,
-                        'ds_bg_samples': config.dataset_size,
-                        'scale': scale,
-                        'crop_fraction': config.center_crop_fraction,
-                        'non_cropping_conv': True,
-
-                    }
-                    run(model, hparams)
-                    
-    """
-    """
-    models = [
-        # parameterized(recipe_32x_odd),
-        parameterized(recipe_32x_exp2),
-        parameterized(recipe_32x_flat5),
-        parameterized(recipe_32x_d1to5),
-              ]
-
-    # for crop_fraction in hp_crop_fraction.domain.values:
-    for model in models:
-        for aug_level in [1]:
-            for scale in hp_scale.domain.values:
-                for width in [16]:
-                    config.scale = scale
-                    config.augment = aug_level
-                    hparams = {
-                        'base_width': width,
-                        'class_weights': 'none',
-                        'aug_level': aug_level,
-                        'ds_bg_samples': config.dataset_size,
-                        'scale': scale,
-                        'crop_fraction': config.center_crop_fraction,
-                    }
-                    run(model, hparams)
-    """
-    """
-    config.dataset_dim = 128
+    config.batch_size = 1024
+    config.epochs = 80
+    config.center_crop_fraction = 0.8
+    config.augment = 2
     config.scale = 0.25
-    config.epochs = 75
-    config.batch_size = 64
-
-    models = [
+    models_list = [
+        # dilated_32x_odd,  # parameterized(recipe_32x_odd),
+        # parameterized(recipe_51x_odd),
+        # parameterized(recipe_64x_odd),
         parameterized(recipe_99x_odd),
-        parameterized(recipe_51x_odd),
-        parameterized(recipe_64x_odd),
-        parameterized(recipe_73x_odd)]
-    for aug_level in [1, 2]:
-        for model in models:
+        parameterized(recipe_73x_odd),
+    ]
+
+    for m in models_list:
+        for base_width in [16, 32]:
             hparams = {
-                'base_width': 16,
+                'base_width': base_width,
                 'class_weights': 'none',
                 'aug_level': config.augment,
                 'ds_bg_samples': config.dataset_size,
                 'scale': config.scale,
                 'crop_fraction': config.center_crop_fraction,
             }
-            run(model, hparams)
-            
-    """
-    """    
-    # config.dataset_dim = 64
-    # m = parameterized(recipe_32x_odd)
-
-    hparams = {
-        'base_width': 16,
-
-        'augmentation': config.augment,
-        'ds_bg_samples': config.dataset_size,
-        'scale': config.scale,
-        'crop_fraction': config.center_crop_fraction,
-        'non_cropping_conv': True,
-
-    }
-    """
-    config.datasets_root = 'datasets'
-
-    from src_util.generate_dataset import images_to_dataset
-    for val in [False, True]:
-        for f, r in [(True, True), (False, False)]:
-            for s in [0.25, 0.5]:
-                images_to_dataset(do_foreground=f, do_background=True, val=val, region_side=128,
-                                  per_image_samples=1000, scale_percentage=25, reduced_sampling_area=r)
-
-    print('generated dataset')
-
-    config.batch_size = 128
-    config.epochs = 50
-    m = parameterized(recipe_64x_odd)
-
-    for s in [0.25, 0.5]:
-        for ccf in [1.0]:
-            for base_width in [8, 16]:
-                for aug_level in [1, 2, 3]:
-                    for weights in ['eff_num', 'none']:
-                        config.scale = s
-                        config.center_crop_fraction = ccf
-                        config.augment = aug_level
-
-                        hparams = {
-                            'base_width': base_width,
-                            'class_weights': 'eff_num',
-                            'aug_level': aug_level,
-                            'ds_bg_samples': config.dataset_size,
-                            'scale': config.scale,
-                            'crop_fraction': config.center_crop_fraction,
-                        }
-                        run(m, hparams)
+            run(m, hparams)

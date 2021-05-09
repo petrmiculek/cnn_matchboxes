@@ -42,5 +42,7 @@ checkpoint_path = None
 output_location = None
 run_logs_dir = None
 
-logs_root = 'logs'
-datasets_root = 'datasets'
+logs_dir = 'logs'
+datasets_dir = 'datasets'
+models_saved_dir = 'models_saved'
+

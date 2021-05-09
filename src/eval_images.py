@@ -16,7 +16,7 @@ import config
 from general import lru_cache
 from labels import get_gt_count, load_labels, resize_labels
 from logs import log_mean_square_error_csv
-from display import display_predictions
+from display import display_predictions, display_keypoints
 
 
 def load_image(img_path, scale=1.0, center_crop_fraction=1.0):
@@ -277,12 +277,13 @@ def mse_pointwise(predictions, img, keypoints, kp_categories, file_labels, show=
 
         if show:
             if len(pts_gt_cat) > 0:
-                ax.scatter(pts_gt_cat[:, 0], pts_gt_cat[:, 1], marker='o')
+                ax.scatter(pts_gt_cat[:, 0], pts_gt_cat[:, 1], color='white', marker='o')
 
             if len(pts_pred_cat) > 0:
-                ax.scatter(pts_pred_cat[:, 0], pts_pred_cat[:, 1], marker='x')
+                ax.scatter(pts_pred_cat[:, 0], pts_pred_cat[:, 1], color='orange', marker='+')
 
-            ax.set_title('{}: {:.2e}'.format(cat, mse))
+            ax.set_title('{}\n{:.2e}'.format(cat, mse))
+            ax.axis('off')
 
         dist_mse_cat_dict[cat] = mse
         mse_cat_list.append(mse)
@@ -294,14 +295,14 @@ def mse_pointwise(predictions, img, keypoints, kp_categories, file_labels, show=
     if show:
         fig.legend(['ground-truth', 'prediction'])
         if len(keypoints) > 0 and np.array(keypoints).ndim == 2:
-            axes[2, 2].scatter(keypoints[:, 0], keypoints[:, 1], marker='*', color='orange')
+            axes[2, 2].scatter(keypoints[:, 0], keypoints[:, 1], marker='+', color='orange')
 
         axes[2, 2].set_xlim(0, img.shape[1])
         axes[2, 2].set_ylim(0, img.shape[0])
         axes[2, 2].invert_yaxis()
         axes[2, 2].imshow(img)
 
-        fig.suptitle('{}: {:.2e}'.format(img_file_name, dist_mse_total))
+        fig.suptitle('Keypoints {}\npoint_mae: {:.2e}'.format(img_file_name, dist_mse_total))
         fig.tight_layout()
         fig.show()
 
@@ -314,6 +315,8 @@ def prediction_to_keypoints(predictions, min_blob_size=None, prediction_threshol
     Threshold prediction
     Find connected components
     Merge neighboring components
+
+    idea: split blob if several parts are > min_blob_size
 
     :return: keypoints, categories (both as np.arrays)
     """
@@ -339,8 +342,6 @@ def prediction_to_keypoints(predictions, min_blob_size=None, prediction_threshol
 
         cats, support = np.unique(prediction_argmax[blobs == blob], return_counts=True)
         blob_sizes.append(len(blob_indices))
-
-        # todo split blob if several parts are > min_blob_size
 
         center = np.mean(blob_indices, axis=0).astype(np.int)
         winning_category = cats[np.argmax(support)]
@@ -413,9 +414,15 @@ def eval_full_prediction(base_model, file_labels, img_path, output_location=None
 
         category_titles = ['{}: {:.1e}'.format(cat, cat_mse) for cat, cat_mse in dist_mse_categories.items()]
         plots_title = f'pix_mse: {pix_mse:.1e}, dist_mse: {dist_mse:.1e}, count_mae: {keypoint_count_mae:0.2g}, ' \
-                      f'Pred: {crate_count_pred}, GT: {crate_count_gt}'
+                      f'Pred: {crate_count_pred:0.2g}, GT: {crate_count_gt:0.2g}'
 
-        show_mse_pixelwise_location(predictions, img, img_path, file_labels, output_location, show=False)
+        kp_plots_title = f'Pred: {crate_count_pred:0.2g}, GT: {crate_count_gt:0.2g}'
+
+        display_keypoints((keypoints_pred, kp_pred_categories), img, img_path, config.class_names, title=kp_plots_title,
+                          show=show, output_location=output_location)
+
+        # unused
+        # show_mse_pixelwise_location(predictions, img, img_path, file_labels, output_location, show=False)
     except Exception as ex:
         print(ex, file=sys.stderr)
 
@@ -423,6 +430,7 @@ def eval_full_prediction(base_model, file_labels, img_path, output_location=None
     # save_predictions_cv(predictions, img, img_path, output_location)
     display_predictions(predictions, img, img_path, category_titles, plots_title,
                         show=show, output_location=output_location, superimpose=True)
+
 
     return pix_mse, dist_mse, keypoint_count_mae, crate_count_error
 

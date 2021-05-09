@@ -38,15 +38,18 @@ def compile_model(model):
                  ])
 
 
-def load_model(model_name, load_weights=True):
-    model_config_path = os.path.join('outputs', model_name, 'model_config.json')
-    weights_path = os.path.join('models_saved', model_name)
+def load_model(model_name, models_saved_dir=None, load_weights=True):
+    if models_saved_dir is None:
+        models_saved_dir = config.models_saved_dir
+
+    model_config_path = os.path.join(models_saved_dir, f'{model_name}.json')
+    weights_path = os.path.join(models_saved_dir, model_name)
 
     with open(model_config_path, mode='r') as config_file:
         config_json = config_file.read()
 
-    model = tf.keras.models.model_from_json(config_json,
-                                            custom_objects={'RandomColorDistortion': model_util.RandomColorDistortion})
+    custom_objects = {'RandomColorDistortion': model_util.RandomColorDistortion}
+    model = tf.keras.models.model_from_json(config_json, custom_objects=custom_objects)
 
     compile_model(model)
 
@@ -60,7 +63,7 @@ def load_model(model_name, load_weights=True):
 
 def get_callbacks():
     """ TensorBoard loggging """
-    config.run_logs_dir = os.path.join(config.logs_root, 'bg{}'.format(config.dataset_size), config.model_name)
+    config.run_logs_dir = os.path.join(config.logs_dir, 'bg{}'.format(config.dataset_size), config.model_name)
     os.makedirs(config.run_logs_dir, exist_ok=True)
     file_writer = tf.summary.create_file_writer(config.run_logs_dir + "/metrics")
     file_writer.set_as_default()

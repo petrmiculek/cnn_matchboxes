@@ -248,7 +248,7 @@ def tf_init():
 
 
 def tensorboard_hparams_init(hparams):
-    with tf.summary.create_file_writer(config.logs_root).as_default():
+    with tf.summary.create_file_writer(config.logs_dir).as_default():
         hp.hparams_config(
             hparams,
             metrics=[
