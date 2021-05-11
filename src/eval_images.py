@@ -13,7 +13,7 @@ from skimage.measure import label as skimage_label
 
 # local
 import config
-from general import lru_cache
+from general import inverse_indexing, lru_cache
 from labels import get_gt_count, load_labels, resize_labels
 from logs import log_mean_square_error_csv
 from display import display_predictions, display_keypoints
@@ -309,6 +309,19 @@ def mse_pointwise(predictions, img, keypoints, kp_categories, file_labels, show=
     return dist_mse_total, dist_mse_cat_dict, keypoint_count_mae
 
 
+def remove_keypoint_outliers(points, categories, threshold_dist=2):
+    dists = cdist(points, points)
+
+    threshold_dist *= np.mean(dists)
+
+    far_from_all = np.argwhere(np.mean(dists, axis=0) > threshold_dist)
+
+    points = inverse_indexing(points, far_from_all)
+    categories = inverse_indexing(categories, far_from_all)
+
+    return points, categories
+
+
 def prediction_to_keypoints(predictions, min_blob_size=None, prediction_threshold=0.9):
     """Convert prediction to keypoints
 
@@ -399,6 +412,7 @@ def eval_full_prediction(base_model, file_labels, img_path, output_location=None
         pix_mse, pix_mse_categories = mse_pixelwise(predictions, img_path, file_labels)
 
         keypoints_pred, kp_pred_categories = prediction_to_keypoints(predictions)
+        keypoints_pred, kp_pred_categories = remove_keypoint_outliers(keypoints_pred, kp_pred_categories)
 
         # keypoint-wise
         dist_mse, dist_mse_categories, keypoint_count_mae = \

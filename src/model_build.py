@@ -79,7 +79,7 @@ def get_callbacks():
 
     lr_logging = model_util.LearningRateLogger()
 
-    mse_logging = model_util.MSELogger(freq=5)
+    mse_logging = model_util.EvalLogger(freq=5)
 
     tensorboard_callback = TensorBoard(config.run_logs_dir, write_graph=False,
                                        histogram_freq=1, profile_batch=0)  # profiling needs sudo

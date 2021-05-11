@@ -35,7 +35,8 @@ from models import *
 import model_build
 from datasets import get_dataset
 from eval_images import eval_full_predictions_all
-from eval_samples import evaluate_model, show_layer_activations
+from eval_samples import evaluate_model
+from display import show_layer_activations
 from logs import log_model_info
 from src_util.general import safestr, DuplicateStream, get_checkpoint_path
 import config
@@ -55,8 +56,6 @@ def run(model_builder, hparams):
         config.scale = 0.5
         config.center_crop_fraction = 0.5
         config.batch_size = 128
-
-    print({h: hparams[h] for h in hparams})
 
     # for batch-running
     # if True:
@@ -98,6 +97,8 @@ def run(model_builder, hparams):
         stdout_orig = sys.stdout
         out_stream = open(os.path.join(config.output_location, 'stdout.txt'), 'a')
         sys.stdout = DuplicateStream(sys.stdout, out_stream)
+
+        print({h: hparams[h] for h in hparams})
 
         log_model_info(model, config.output_location, config.models_saved_dir)
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'

@@ -14,21 +14,20 @@ import config
 import model_build
 import models
 from datasets import get_dataset
-from eval_images import \
-    eval_full_predictions_all, prediction_to_keypoints, \
+from eval_images import eval_full_predictions_all, prediction_to_keypoints, \
     make_prediction, load_image,\
     crop_to_prediction
-from eval_samples import evaluate_model, show_layer_activations
-from display import display_predictions, display_keypoints
+from eval_samples import evaluate_model
+from display import display_predictions, display_keypoints, show_layer_activations
 from counting import count_points_tlr, get_gt_points, count_crates
 
 if __name__ == '__main__':
     config.train = False
     config.dataset_size = 1000
-    config.center_crop_fraction = 0.7
+    config.center_crop_fraction = 1.0
     # depends on model
     # train dim decided by model
-    config.scale = 0.5
+    config.scale = 0.25
 
     # should not matter
     config.augment = True
@@ -42,8 +41,10 @@ if __name__ == '__main__':
     # load_model_name = 'dilated_64x_exp2_2021-03-29-15-58-47_full'  # /data/datasets/128x_050s_1000bg
     # load_model_name = '32x_d3-5-7-1-1_2021-04-19-14-25-48_full'  # /data/datasets/64x_025s_1000bg
     # load_model_name = '64x_d1-3-5-7-9-11-1-1_2021-04-23-14-10-33_full'  # /data/datasets/128x_050s_1000bg
-    load_model_name = '64x_d1-3-5-7-9-11-1-1_2021-04-23-14-10-33_full'  # /data/datasets/128x_050s_1000bg
+    # load_model_name = '64x_d1-3-5-7-9-11-1-1_2021-04-23-14-10-33_full'  # /data/datasets/128x_050s_1000bg
     # load_model_name = '64x_d1-3-5-7-9-11-1-1_2021-04-30-05-56-46_full'  # /data/datasets/128x_050s_1000bg
+    # load_model_name = '64x_d1-3-5-7-9-11-1-1_2021-05-08-05-54-02_full'  # /data/datasets/128x_050s_1000bg
+    load_model_name = '64x_d1-3-5-7-9-11-1-1_2021-05-10-05-53-28_full'  # /data/datasets/128x_050s_1000bg
 
     # load_model_name = '99x_d1-3-5-7-9-11-13-1_2021-04-29-11-43-25_full'  # /data/datasets/128x_050s_1000bg
     config.model_name = load_model_name + '_reloaded'
@@ -54,7 +55,7 @@ if __name__ == '__main__':
         dim = int(dim_str)
     except IndexError:
         print('', file=sys.stderr)
-        dim = 64
+        dim = 64  # fallback
 
     config.train_dim = dim
     config.dataset_dim = 2 * dim
@@ -69,6 +70,28 @@ if __name__ == '__main__':
     train_ds, config.class_names, _ = get_dataset(dataset_dir)
 
     if False:
+        # show augmented samples from dataset
+        imgs, labels = next(iter(train_ds))
+        idx = np.argwhere(labels.numpy() > 0)
+        # rozšířit indexy
+        idx = np.append(idx, np.arange(255 - len(idx), 255))
+        imgs = imgs.numpy()[idx]
+        labels = labels.numpy()[idx]
+        imgs_ = imgs[::2]
+        from src.display import show_augmentation
+
+        show_augmentation(aug_model, imgs)
+
+    if False:
+        # save model summary figure
+        import visualkeras
+        from PIL import ImageFont
+        font = ImageFont.truetype('/usr/share/fonts/truetype/cmu/cmunrm.ttf', 32)
+        visualkeras.layered_view(model, legend=True, font=font, to_file='model_summary.pdf')
+
+    if False:
+        config.output_location = os.path.join('best_outputs', model.name)
+        # run evaluation
         mse_pix_val, mse_val, keypoint_count_mae_val, crate_count_mae_val, crate_count_failrate_val = \
             eval_full_predictions_all(base_model, val=True, output_location=config.output_location, show=config.show)
 
@@ -114,13 +137,13 @@ if __name__ == '__main__':
                     full_prediction(base_model, file_labels, img_path=images_dir + os.sep + file,
                                     output_location=output_location, show=show)
 
-    if True:
+    if False:
         show = True
         output_location = os.path.join('outputs', base_model.name, 'crate_count')
         os.makedirs(output_location, exist_ok=True)
 
-        images_dir = 'sirky'
-        file = os.listdir(images_dir)[-1]
+        images_dir = 'sirky' + '_val'
+        file = os.listdir(images_dir)[2]
 
         counts_gt = pd.read_csv(os.path.join('sirky', 'count.txt'),
                                 header=None,
@@ -137,15 +160,17 @@ if __name__ == '__main__':
             prediction = make_prediction(base_model, img)
             img, crop_delta = crop_to_prediction(img, prediction.shape)
             keypoints, categories = prediction_to_keypoints(prediction)
+            keypoints, categories = remove_keypoint_outliers(keypoints, categories)
+
             df = pd.DataFrame(np.c_[keypoints, categories], columns=['x', 'y', 'category'])
             label_dict = dict(enumerate(config.class_names))
             df['category'] = df['category'].map(label_dict)
             count_gt = np.array(counts_gt[counts_gt.image == file].cnt)[0]
             count_pred = count_crates(df)
 
-            print(f'Count: prediction = {count_pred}, gt = {count_gt}')
+            print(f'Count: prediction = {count_pred:0.2g}, gt = {count_gt:0.2g}')
 
 
-            title = f'{file}\nPred: {count_pred}, GT: {count_gt}'
+            title = f'{file}\nPred: {count_pred:0.2g}, GT: {count_gt:0.2g}'
             display_keypoints((keypoints, categories), img, img_path, config.class_names, title=title,
                                 show=show, output_location=output_location)

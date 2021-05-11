@@ -2,11 +2,16 @@
 import os
 
 # external
+from math import ceil, floor, sqrt
+
+import PIL
 import numpy as np
 import cv2 as cv
+import tensorflow as tf
 from matplotlib import pyplot as plt
 
 # local
+import config
 from src_util.general import safestr
 
 
@@ -246,3 +251,157 @@ def generate_class_weights_plots(class_names, class_counts, class_weights):
 
         eff = np.array(list(weights_effective_number(class_counts, b).values()))
         plot_class_weights(class_names, eff, 'weight', f'Effective Number of Samples[Beta=(N-1)/N]')
+
+
+def show_layer_activations(model, data_augmentation, ds, show=True, output_location=None):
+    """Predict single cutout and show network's layer activations
+
+    Adapted from:
+    https://towardsdatascience.com/feature-visualization-on-convolutional-neural-networks-keras-5561a116d1af
+
+    :param output_location:
+    :param show:
+    :param data_augmentation:
+    :param model:
+    :param ds:
+    :return:
+    """
+
+    if output_location:
+        output_location = os.path.join(output_location, 'layer_activations')
+        os.makedirs(output_location, exist_ok=True)
+
+    # choose non-background sample
+    batch, labels = next(iter(ds))  # first batch
+    idx = np.argmax(labels)
+
+    batch_img0 = tf.convert_to_tensor(batch[idx: idx + 1])  # first image (made to a 1-element batch)
+
+    layers = [layer.output for layer in model.layers]
+    model_all_outputs = tf.keras.Model(inputs=model.input, outputs=layers)
+
+    # no augmentation, only crop
+    batch_img0 = data_augmentation(batch_img0, training=False)
+
+    print('GT   =', config.class_names[int(labels[idx].numpy())])
+    all_layer_activations = model_all_outputs(batch_img0, training=False)
+    pred = all_layer_activations[-1].numpy()
+    predicted_category = config.class_names[np.argmax(pred)]
+    print('pred =', pred.shape, predicted_category)
+
+    # I could test for region not being background here
+    # ... or just read in images of known categories
+
+    """ Show input image """
+    fig_input, ax = plt.subplots(figsize=(6, 6))
+
+    ax.imshow(batch_img0[0].numpy().astype('uint8'), cmap='viridis', vmin=0, vmax=255)
+    if output_location:
+        plt.savefig(os.path.join(output_location, '00_input' + predicted_category))
+
+    if show:
+        plt.show()
+
+    plt.close(fig_input.figure)
+
+    layer_names = []
+    for i, layer in enumerate(model.layers):
+        layer_names.append(str(i) + '_' + layer.name)
+
+    images_per_row = 16
+
+    for layer_name, layer_activation in zip(layer_names, all_layer_activations):
+
+        # debugging image scaling - how many values end up out of range
+        out_of_range_count = 0
+        total_count = 0
+
+        n_features = layer_activation.shape[-1]  # Number of features in the feature map
+        size = layer_activation.shape[1]  # The feature map has shape (1, size, size, n_features).
+
+        n_cols = ceil(n_features / images_per_row)  # Tiles the activation channels in this matrix
+        display_grid = np.zeros((size * n_cols, images_per_row * size))
+
+        for col in range(n_cols):  # Tiles each filter into a big horizontal grid
+            for row in range(min(images_per_row, n_features)):
+                channel_image = layer_activation[0, :, :, col * images_per_row + row]
+
+                channel_image *= 64
+                channel_image += 128
+
+                # how often do we clip
+                min_, max_ = np.min(channel_image), np.max(channel_image)
+                if min_ < 0.0 or max_ > 255.0:
+                    out_of_range_count += 1
+                total_count += 1
+
+                channel_image = np.clip(channel_image, 0, 255).astype('uint8')
+                display_grid[col * size: (col + 1) * size,
+                             row * size: (row + 1) * size] = channel_image
+
+        scale = 1.0 / size
+        fig = plt.figure(figsize=(scale * display_grid.shape[1],
+                                  scale * display_grid.shape[0]))
+        plt.title(layer_name)
+        plt.grid(False)
+        plt.imshow(display_grid, aspect='auto', cmap='viridis', vmin=0, vmax=255)
+
+        if output_location:
+            plt.savefig(os.path.join(output_location, layer_name))
+
+        if show:
+            plt.show()
+
+        plt.close(fig.figure)
+
+
+def show_augmentation(data_augmentation, imgs):
+    """Show grid of augmentation results
+
+    :param data_augmentation:
+    :param dataset:
+    :return:
+    """
+
+    """Convert dataset"""
+    # todo use predict_all_tf, with added training param
+    # imgs = [img
+    #         for batch in list(dataset)
+    #         for img in batch[0]]
+    #
+    # imgs = np.vstack([imgs])  # -> 4D [img_count x width x height x channels]
+
+    """Make predictions"""
+    preds = []
+    for img in imgs:
+        img = img[None, ...]
+        pred = data_augmentation(tf.convert_to_tensor(img, dtype=tf.uint8), training=True)
+        preds.append(pred[0])
+
+    preds = np.stack(preds, axis=0)
+
+    low = 1 * imgs.shape[2] // 4
+    high = 3 * imgs.shape[2] // 4
+
+    # Center-crop regions (64x to 32x)
+    imgs = imgs[:, low:high, low:high, :]
+
+    # alternatively, resize to 1/2 inside the loop below, once merged (B, W, H, C) -> (B*W, H, C)
+    # imgs_col = cv.resize(imgs_col, None, fx=0.5, fy=0.5)
+
+    """Show predictions as a grid"""
+    # rows = floor(sqrt(len(imgs)))  # Note: does not use all images
+    rows = 8
+    cols = []
+
+    for i in range(len(imgs) // rows):
+        # make a column [W, N * H]
+        imgs_col = np.hstack(imgs[rows * i:(i + 1) * rows])
+        pred_col = np.hstack(preds[rows * i:(i + 1) * rows])
+        col = np.vstack((imgs_col, pred_col))
+        cols.append(col)
+
+    grid_img = np.vstack(cols)
+
+    pi = PIL.Image.fromarray(grid_img.astype('uint8'))
+    pi.show()

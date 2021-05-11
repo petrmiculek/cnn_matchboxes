@@ -570,6 +570,8 @@ def count_points_tlr(file_labels, quiet=True):
 
     # X and Z axes can get switched up but it doesn't affect the counting
 
+    # hull_xy = ConvexHull(np.vstack([corners_bottom[[i_left, i_front]], corners_top_front[[i_left, i_front]]]))
+
     count = final_count(file_labels, lines_x, lines_y, lines_z)
 
     return count

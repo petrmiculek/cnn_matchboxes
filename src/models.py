@@ -286,7 +286,7 @@ def recipe_sandbox():
         print(dim)
 
 
-def metarecipe_from_dilation(layers=4):
+def metarecipe_odd(growth=None, layers=4):
     dilation_rate = 1
     k = 3
     kernels = []
@@ -295,7 +295,11 @@ def metarecipe_from_dilation(layers=4):
     for i in range(layers):
         kernels.append(k)
         dilations.append(dilation_rate)
-        dilation_rate += 2
+        if growth == 'odd':
+            dilation_rate += 2
+        elif growth == 'exp':
+            dilation_rate *= 2
+
         widths.append(8 * 2 ** (i // 2))
 
     def recipe_from_dilation():

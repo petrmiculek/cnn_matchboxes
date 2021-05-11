@@ -121,8 +121,8 @@ class AUC(tf.keras.metrics.AUC):
         return super(AUC, self).update_state(y_true, y_pred_binary, sample_weight)
 
 
-class MSELogger(tf.keras.callbacks.Callback):
-    """Calculate full image prediction MSE metric
+class EvalLogger(tf.keras.callbacks.Callback):
+    """Evaluate full image metrics and log them to TensorBoard
 
     results printed and logged to TensorBoard
     """

@@ -166,17 +166,17 @@ if __name__ == '__main__':
 
     config.datasets_root = 'datasets'
 
-    config.batch_size = 1024
+    config.batch_size = 64
     config.epochs = 80
-    config.center_crop_fraction = 0.8
+    config.center_crop_fraction = 1.0
     config.augment = 2
     config.scale = 0.25
     models_list = [
-        # dilated_32x_odd,  # parameterized(recipe_32x_odd),
+        dilated_32x_odd,  # parameterized(recipe_32x_odd),
         # parameterized(recipe_51x_odd),
         # parameterized(recipe_64x_odd),
-        parameterized(recipe_99x_odd),
-        parameterized(recipe_73x_odd),
+        # parameterized(recipe_99x_odd),
+        # parameterized(recipe_73x_odd),
     ]
 
     for m in models_list:
