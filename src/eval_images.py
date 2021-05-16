@@ -266,6 +266,7 @@ def mse_pointwise(predictions, img, keypoints, kp_categories, file_labels, show=
             ax = axes[i // 3, i % 3]
             ax.set_title(cat)
             ax.imshow(predictions[:, :, i])
+            ax.axis('off')
 
         if i == 0:
             continue
@@ -277,13 +278,12 @@ def mse_pointwise(predictions, img, keypoints, kp_categories, file_labels, show=
 
         if show:
             if len(pts_gt_cat) > 0:
-                ax.scatter(pts_gt_cat[:, 0], pts_gt_cat[:, 1], color='white', marker='o')
+                ax.scatter(pts_gt_cat[:, 0], pts_gt_cat[:, 1], color='orange', marker='o')
 
             if len(pts_pred_cat) > 0:
-                ax.scatter(pts_pred_cat[:, 0], pts_pred_cat[:, 1], color='orange', marker='+')
+                ax.scatter(pts_pred_cat[:, 0], pts_pred_cat[:, 1], color='green', marker='+')
 
             ax.set_title('{}\n{:.2e}'.format(cat, mse))
-            ax.axis('off')
 
         dist_mse_cat_dict[cat] = mse
         mse_cat_list.append(mse)
@@ -295,7 +295,7 @@ def mse_pointwise(predictions, img, keypoints, kp_categories, file_labels, show=
     if show:
         fig.legend(['ground-truth', 'prediction'])
         if len(keypoints) > 0 and np.array(keypoints).ndim == 2:
-            axes[2, 2].scatter(keypoints[:, 0], keypoints[:, 1], marker='+', color='orange')
+            axes[2, 2].scatter(keypoints[:, 0], keypoints[:, 1], marker='+', color='lime')
 
         axes[2, 2].set_xlim(0, img.shape[1])
         axes[2, 2].set_ylim(0, img.shape[0])
@@ -309,7 +309,7 @@ def mse_pointwise(predictions, img, keypoints, kp_categories, file_labels, show=
     return dist_mse_total, dist_mse_cat_dict, keypoint_count_mae
 
 
-def remove_keypoint_outliers(points, categories, threshold_dist=2):
+def remove_keypoint_outliers(points, categories, threshold_dist=1.8):
     dists = cdist(points, points)
 
     threshold_dist *= np.mean(dists)

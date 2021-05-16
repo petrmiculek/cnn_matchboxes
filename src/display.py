@@ -75,7 +75,7 @@ def display_predictions(predictions, img, img_path, class_titles, title='',
 
     if output_location:
         os.makedirs(output_location, exist_ok=True)
-        fig_location = name_image_saving(img_path, output_location, 'prediction') + '.png'
+        fig_location = name_image_saving(img_path, output_location, 'prediction') + '.svg'
         fig.savefig(fig_location, bbox_inches='tight')
     plt.close(fig)
 
@@ -110,7 +110,7 @@ def display_keypoints(keypoints_categories, img, img_path, class_titles, title='
         ax.imshow(img)
         kp = keypoints[categories == i]
         if kp.size > 0:
-            ax.scatter(kp[:, 0], kp[:, 1], marker='.', color='orange')
+            ax.scatter(kp[:, 0], kp[:, 1], marker='+', color='lime')
         ax.axis('off')
         ax.set_title(subplot_titles[i])
 
@@ -120,7 +120,7 @@ def display_keypoints(keypoints_categories, img, img_path, class_titles, title='
 
     if output_location:
         os.makedirs(output_location, exist_ok=True)
-        fig_location = name_image_saving(img_path, output_location, 'keypoints') + '.png'
+        fig_location = name_image_saving(img_path, output_location, 'keypoints') + '.svg'
         fig.savefig(fig_location, bbox_inches='tight')
     plt.close(fig)
 
@@ -222,7 +222,7 @@ def plot_class_weights(class_names, y_data, y_label, title):
         ax.set_yscale('log')
         ax.set_ylabel(y_label)
         ax.set_xlabel('class')
-        ax.set_ylim(1 / 100, 100)
+        # ax.set_ylim(1 / 100, 100)
 
         figure.suptitle(title)
 

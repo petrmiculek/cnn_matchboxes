@@ -90,7 +90,7 @@ if __name__ == '__main__':
         visualkeras.layered_view(model, legend=True, font=font, to_file='model_summary.pdf')
 
     if False:
-        config.output_location = os.path.join('best_outputs', model.name)
+        config.output_location = os.path.join('best_outputs', 'svg_' + model.name)
         # run evaluation
         mse_pix_val, mse_val, keypoint_count_mae_val, crate_count_mae_val, crate_count_failrate_val = \
             eval_full_predictions_all(base_model, val=True, output_location=config.output_location, show=config.show)
@@ -123,7 +123,7 @@ if __name__ == '__main__':
             config.scale = s
 
             images_dir = 'sirky' + '_val' * val
-            file = os.listdir(images_dir)[-1]
+            file = sorted(os.listdir(images_dir))[-1]
 
             for ccf in np.arange(0.10, 1.05, 0.05):
                 config.center_crop_fraction = ccf
@@ -142,8 +142,8 @@ if __name__ == '__main__':
         output_location = os.path.join('outputs', base_model.name, 'crate_count')
         os.makedirs(output_location, exist_ok=True)
 
-        images_dir = 'sirky' + '_val'
-        file = os.listdir(images_dir)[2]
+        images_dir = 'sirky'  # + '_val'
+        file = os.listdir(images_dir)[-3]
 
         counts_gt = pd.read_csv(os.path.join('sirky', 'count.txt'),
                                 header=None,
@@ -153,10 +153,13 @@ if __name__ == '__main__':
         for file in os.listdir(images_dir):
             if not file.endswith('.jpg'):
                 continue
-            config.center_crop_fraction = 0.7
+
+            file = '20201020_115946.jpg'
+            config.center_crop_fraction = 1.0
 
             img_path = os.path.join(images_dir, file)
-            img, orig_size = load_image(img_path, config.scale, config.center_crop_fraction)
+            img, orig_size = load_image(img_path, 1.0, config.center_crop_fraction)
+
             prediction = make_prediction(base_model, img)
             img, crop_delta = crop_to_prediction(img, prediction.shape)
             keypoints, categories = prediction_to_keypoints(prediction)
@@ -170,7 +173,37 @@ if __name__ == '__main__':
 
             print(f'Count: prediction = {count_pred:0.2g}, gt = {count_gt:0.2g}')
 
-
             title = f'{file}\nPred: {count_pred:0.2g}, GT: {count_gt:0.2g}'
             display_keypoints((keypoints, categories), img, img_path, config.class_names, title=title,
                                 show=show, output_location=output_location)
+
+            from labels import load_labels, resize_labels
+            labels = load_labels(images_dir + os.sep + 'labels.csv', use_full_path=False, keep_bg=False)
+            labels = resize_labels(labels, 1.0, 0, config.center_crop_fraction)
+            file_labels = labels[labels.image == file]
+            plt.imshow(img)
+
+            colors = {
+                'background': 'w',
+                'corner-bottom': 'blueviolet',
+                'corner-top': 'magenta',
+                'edge-bottom': 'blue',
+                'edge-side': 'dodgerblue',
+                'edge-top': 'turquoise',
+                'intersection-side': 'darkorange',
+                'intersection-top': 'gold'}
+
+            from counting import get_gt_points
+            for i, cat in enumerate(config.class_names):
+                pts = get_gt_points(file_labels, cat)
+                c = colors[cat]
+                if len(pts) > 0:
+                    plt.scatter(*pts.T, marker='o', color=c)
+
+
+            plt.axis('off')
+            plt.tight_layout()
+            plt.legend(config.class_names[1:])
+            plt.savefig('annotations.pdf')
+
+            plt.show()

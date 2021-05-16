@@ -43,6 +43,6 @@ output_location = None
 run_logs_dir = None
 
 logs_dir = 'logs'
-datasets_dir = 'datasets'
+datasets_dir = '/data/datasets'
 models_saved_dir = 'models_saved'
 

@@ -1,9 +1,8 @@
 # stdlib
 import os
-
-# external
 import sys
 
+# external
 import cv2 as cv
 import numpy as np
 import pandas as pd
@@ -672,7 +671,8 @@ def count_crates(keypoints, quiet=True):
     corners_bottom = get_gt_points(keypoints, 'corner-bottom', cv=False)
     count_pred = -1
     try:
-        if len(corners_top) == 4:
+        if len(corners_top) >= 4:
+            corners_top = corners_top[:4]
             if len(corners_bottom) == 3:
                 # print('side-oblique view (TLR)')
                 count_pred = count_points_tlr(keypoints)
@@ -712,15 +712,14 @@ def count_crates(keypoints, quiet=True):
     return count_pred
 
 
-# if __name__ == '__main__':
 def main():
     """ Load GT points """
     input_folder = 'sirky'  # + '_val'
     labels_path = os.path.join(input_folder, 'labels.csv')
     labels = load_labels(labels_path, use_full_path=False, keep_bg=False)
 
-    scale = 0.5
-    center_crop_fraction = 0.8
+    scale = 0.25
+    center_crop_fraction = 1.0
     model_crop_delta = 63
     labels = resize_labels(labels, scale, model_crop_delta=model_crop_delta, center_crop_fraction=center_crop_fraction)
 

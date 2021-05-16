@@ -48,7 +48,7 @@ def confusion_matrix(labels, predictions, output_location=None, show=True, val=F
         fig_cm.figure.show()
 
     if output_location:
-        fig_cm.figure.savefig(os.path.join(output_location, 'confusion_matrix' + '_val' * val + '.png'),
+        fig_cm.figure.savefig(os.path.join(output_location, 'confusion_matrix' + '_val' * val + '.svg'),
                               bbox_inches='tight')
 
     plt.close(fig_cm.figure)
