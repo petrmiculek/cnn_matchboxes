@@ -15,11 +15,10 @@ import model_build
 import models
 from datasets import get_dataset
 from eval_images import eval_full_predictions_all, prediction_to_keypoints, \
-    make_prediction, load_image,\
-    crop_to_prediction
+    make_prediction, load_image, crop_to_prediction
 from eval_samples import evaluate_model
 from display import display_predictions, display_keypoints, show_layer_activations
-from counting import count_points_tlr, get_gt_points, count_crates
+from counting import get_gt_points, count_crates
 
 if __name__ == '__main__':
     config.train = False

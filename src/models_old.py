@@ -11,7 +11,7 @@ from tensorflow.keras.layers import \
 from tensorflow.keras.layers.experimental.preprocessing import \
     CenterCrop, RandomFlip, RandomRotation, Rescaling
 
-from src_util.general import safestr
+from src_util.util import safestr
 
 # common building blocks
 he_norm = tf.keras.initializers.he_normal()

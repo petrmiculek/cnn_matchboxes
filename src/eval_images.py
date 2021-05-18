@@ -13,7 +13,7 @@ from skimage.measure import label as skimage_label
 
 # local
 import config
-from general import inverse_indexing, lru_cache
+from util import inverse_indexing, lru_cache
 from labels import get_gt_count, load_labels, resize_labels
 from logs import log_mean_square_error_csv
 from display import display_predictions, display_keypoints
@@ -43,8 +43,8 @@ def load_image(img_path, scale=1.0, center_crop_fraction=1.0):
         high = (1 + center_crop_fraction) / 2
 
         img = img[int(img.shape[0] * low): int(img.shape[0] * high),
-              int(img.shape[1] * low): int(img.shape[1] * high),
-              :]
+                  int(img.shape[1] * low): int(img.shape[1] * high),
+                  :]
 
     img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
     img = cv.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)),
@@ -64,7 +64,7 @@ def make_prediction(base_model, img, maxes_only=False, undecided_only=False):
     :return:
     """
     import tensorflow as tf
-    # ^ since `import tensorflow` starts libcudart, it needs not to be at module-level
+    # ^ since `import tensorflow` starts libcudart, it is better not to put the import at module-level
     # it makes a difference when a non-tf function from this module is imported in a non-tf environment
 
     predictions_raw = base_model.predict(tf.convert_to_tensor(tf.expand_dims(img, 0), dtype=tf.uint8))
@@ -156,6 +156,7 @@ def mse_pixelwise(predictions, img_path, file_labels):
 
     """ background """
     if False:
+        # unused
         file_labels_merged = file_labels[['x', 'y']].to_numpy()
 
         bg_list = grid[pred_argmax == 0]  # list of 2D coords
@@ -214,7 +215,7 @@ def mse_pixelwise(predictions, img_path, file_labels):
 
 
 def mse_pointwise(predictions, img, keypoints, kp_categories, file_labels, show=False):
-    """Keypoint-wise Mean Square Error
+    """Keypoint-wise Mean Square Error + plotting keypoints
 
     :param predictions:
     :param img:
@@ -547,5 +548,6 @@ def show_mse_pixelwise_location(predictions, img, img_path, file_labels, output_
 
     # show/save with matplotlib
     display_predictions(tst, img, img_path, titles, output_location=output_location, show=show)
+
     # save with OpenCV - unused
     # save_predictions_cv(tst, img, img_path, output_location)

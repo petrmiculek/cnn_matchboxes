@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 # local
-from general import lru_cache
+from util import lru_cache
 
 
 @lru_cache(copy=True)

@@ -1,9 +1,8 @@
 # stdlib
 import os
+from math import ceil
 
 # external
-from math import ceil, floor, sqrt
-
 import PIL
 import numpy as np
 import cv2 as cv
@@ -12,18 +11,11 @@ from matplotlib import pyplot as plt
 
 # local
 import config
-from src_util.general import safestr
+from src_util.util import safestr
 
 
-# disable profiling-related-errors
-# def profile(x):
-#     return x
-
-
-# @pro file
 def postprocess_predictions(img, predictions, superimpose=False):
     predictions = np.uint8(255 * predictions)
-    # img = cv.cvtColor(img, cv.COLOR_RGB2BGR)
     class_activations = []
     heatmap_alpha = 0.7
     for i in range(8):
@@ -37,7 +29,6 @@ def postprocess_predictions(img, predictions, superimpose=False):
     return class_activations
 
 
-# @pro file
 def display_predictions(predictions, img, img_path, class_titles, title='',
                         show=True, output_location=None, superimpose=False):
     """Plot predictions as heatmaps superimposed on input image
@@ -165,40 +156,6 @@ def save_predictions_cv(predictions, img, img_path, output_location):
     cv.imwrite(fig_location, class_activations)
 
 
-def tile(arr, nrows, ncols):
-    """
-    unused
-
-    https://stackoverflow.com/questions/42040747/more-idiomatic-way-to-display-images-in-a-grid-with-numpy
-
-    Args:
-        arr: HWC format array
-        nrows: number of tiled rows
-        ncols: number of tiled columns
-    """
-    h, w, c = arr.shape
-    out_height = nrows * h
-    out_width = ncols * w
-    chw = np.moveaxis(arr, (0, 1, 2), (1, 2, 0))
-
-    if c < nrows * ncols:
-        chw = chw.reshape(-1).copy()
-        chw.resize(nrows * ncols * h * w)
-
-    return (chw
-            .reshape((nrows, ncols, h, w))
-            .swapaxes(1, 2)
-            .reshape(out_height, out_width))
-
-
-def plot_mse_history():
-    import pandas as pd
-    import os
-    import matplotlib.pyplot as plt
-
-    history = pd.read_csv(os.path.join('outputs', 'losses_sum.csv'))
-
-
 def plot_class_weights(class_names, y_data, y_label, title):
     import seaborn as sns
     import matplotlib.pyplot as plt
@@ -230,7 +187,6 @@ def plot_class_weights(class_names, y_data, y_label, title):
         item.set_rotation(90)
 
     figure.tight_layout()
-    from general import safestr
     title = safestr(title)
     figure.savefig(f'dataset_{title}.pdf', bbox_inches='tight')
     figure.show()
@@ -289,9 +245,6 @@ def show_layer_activations(model, data_augmentation, ds, show=True, output_locat
     predicted_category = config.class_names[np.argmax(pred)]
     print('pred =', pred.shape, predicted_category)
 
-    # I could test for region not being background here
-    # ... or just read in images of known categories
-
     """ Show input image """
     fig_input, ax = plt.subplots(figsize=(6, 6))
 
@@ -312,7 +265,6 @@ def show_layer_activations(model, data_augmentation, ds, show=True, output_locat
 
     for layer_name, layer_activation in zip(layer_names, all_layer_activations):
 
-        # debugging image scaling - how many values end up out of range
         out_of_range_count = 0
         total_count = 0
 
@@ -359,17 +311,9 @@ def show_augmentation(data_augmentation, imgs):
     """Show grid of augmentation results
 
     :param data_augmentation:
-    :param dataset:
+    :param imgs:
     :return:
     """
-
-    """Convert dataset"""
-    # todo use predict_all_tf, with added training param
-    # imgs = [img
-    #         for batch in list(dataset)
-    #         for img in batch[0]]
-    #
-    # imgs = np.vstack([imgs])  # -> 4D [img_count x width x height x channels]
 
     """Make predictions"""
     preds = []

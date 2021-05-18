@@ -3,63 +3,17 @@ import os
 import sys
 
 # external
-import cv2 as cv
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib import cm
-from skimage.transform import hough_line, hough_line_peaks
 from skimage.draw import line as draw_line
-import skimage
 from scipy.spatial import ConvexHull
 from scipy.spatial.distance import cdist, cosine
 
 # local
 from eval_images import crop_to_prediction, load_image
-from general import inverse_indexing
+from util import inverse_indexing
 from labels import load_labels, resize_labels
-
-
-def hough_lines_point_set(points_cv):
-    points_cv_reshaped = points_cv.reshape(-1, 1, 2)
-
-    r = cv.HoughLinesPointSet(points_cv_reshaped, 1500, 2,
-                              0, 1000, 2,  # rho
-                              0, np.pi, np.pi / 180)  # theta
-
-    # cv.HoughLinesPointSet(_point, lines_max, threshold,
-    #                       min_rho, max_rho, rho_step,
-    #                       min_theta, max_theta, theta_step[,_lines]    )
-
-    plt.scatter(*r.T)
-    plt.show()
-    rpts = r.reshape((1, -1, 2))
-    # xfm_pts = cv.perspectiveTransform(rpts, H).reshape((-1, 2))  # what's H
-
-    # cv.utils.dumpInputArray(points_cv)  # was of no use
-
-
-def connect_closer_than(points, canvas_shape, dist_max=100, alpha=100):
-    dists = cdist(points, points)
-    canvas = np.zeros(shape=canvas_shape)
-    for i in range(dists.shape[0]):
-        for j in range(i + 1, dists.shape[1]):
-            if dists[i, j] <= dist_max:
-                d = draw_line(*points[i], *points[j])
-                canvas[d] += alpha
-
-    canvas = canvas.clip(0, 255).astype(np.uint8)
-    return canvas
-
-
-def connect_overlay(points_cv, img_rgb, th):
-    net = connect_closer_than(points_cv, (img_rgb.shape[0], img_rgb.shape[1]), dist_max=th, alpha=255)
-    # img_plus_net = np.clip(img_rgb // 4 + net[:, :, None], 0, 255).astype(np.uint8)
-    img_plus_net = net
-    plt.imshow(img_plus_net)
-    plt.title('th=', th)
-    # plt.axis(False)
-    plt.show()
 
 
 def get_gt_points(file_labels, cat=None, cv=False):
@@ -170,10 +124,8 @@ def count_points_on_line(points, line, dst_th=10, show=False):
     idx_inside = np.all(np.logical_and(points >= low, points <= high), axis=1)
     wrapper = points[idx_inside]  # obálka = rectangle aligned with axes
 
-    # distance(points, line)
     dists = np.abs(np.cross(p2 - p1, p1 - wrapper))
     if line_len != 0:
-        # print(line_len)
         dists = dists / line_len
     else:
         print(f'count_points_on_line: zero-length line: {p1} -> {p2}', file=sys.stderr)
@@ -216,6 +168,8 @@ def get_top_back_point(pts_bottom, pts_top):
 
         angle_factor = (1 - cosine(bot_mean - pt_top_back, bot_mean - top_mean))
         distance_factor = dist_to_top_back - dist_to_top_front
+
+        # distance factor
         score = angle_factor * distance_factor
         scores.append(score)
 
@@ -325,16 +279,6 @@ def count_points_tl(file_labels):
     corners_top_a = corners_top[parallels_indices[[0, 1]]]
     corners_top_b = corners_top[parallels_indices[[2, 3]]]
 
-    if False:
-        # checking parallel lines
-        plt.imshow(img)
-        plt.title(file)
-        plt.scatter(*corners_bottom.T, marker='d')
-        plt.scatter(*corners_top.T, marker='o')
-        plt.scatter(*corners_top_a.T, marker='+')
-        plt.scatter(*corners_top_b.T, marker='x')
-        plt.show()
-
     vertical = np.array([horizontal[1], horizontal[0] * -1])
 
     lines = [corners_bottom, corners_top_a, corners_top_b]
@@ -352,15 +296,6 @@ def count_points_tl(file_labels):
 
     corners_top_front = lines[vertical_ordering[1]]
     corners_top_back = lines[vertical_ordering[2]]
-
-    if False:
-        # checking ordering of top rows
-        plt.imshow(img)
-        plt.title(file)
-        plt.scatter(*corners_bottom.T, marker='d')
-        plt.scatter(*corners_top_front.T, marker='+')
-        plt.scatter(*corners_top_back.T, marker='x')
-        plt.show()
 
     lines_x = [
         corners_bottom[[0, 1]],
@@ -417,29 +352,14 @@ def find_parallel(points, direction):
                 # normalize to unit vector
                 line2 = line2 / np.linalg.norm(line2)
 
-                # # dot + arccos => angle
-                # di = np.dot(line1, line2)
-                # d1 = np.dot(line1, direction)
-                # d2 = np.dot(line2, direction)
-                #
-                # ai = np.arccos(di)
-                # a1 = np.arccos(d1)
-                # a2 = np.arccos(d2)
-                #
-                # err1 = np.abs(a1 - ai)
-                # err2 = np.abs(a2 - ai)
-
                 err1 = cosine(direction, line1)
                 err2 = cosine(direction, line2)
                 err_inter = cosine(line1, line2)
                 curr_score = err1 + err2 + err_inter
 
-                # print([i, j, m, n], err1, err2, err_inter, (curr_score))
-
                 if curr_score < best_score:
                     best_score = curr_score
                     best_indices = [i, j, m, n]
-                    # print('^')
 
     return np.array(best_indices)
 
@@ -496,7 +416,7 @@ def count_points_lr(file_labels):
     return count
 
 
-def count_points_tlr(file_labels, quiet=True):
+def count_points_tlr(file_labels):
     """Count points in a 3-side view
 
     split top points into front (3) and back (1)
@@ -534,20 +454,6 @@ def count_points_tlr(file_labels, quiet=True):
     # order vertical lines along the horizontal direction (left to right)
     horizontal_ordering = ordered_along_line(vertical_lines_means, side_direction)
 
-    """
-    if False:
-    # checking front-back decision
-    for i in side_ordering:
-        plt.scatter(*pts_top[farthest_top_idx].T, marker='d')
-        plt.scatter(*pts_bottom.T, marker='o')
-        plt.scatter(*pts_top_front.T, marker='o')
-
-        plt.scatter(*pts_bottom[i].T, marker='+')
-        plt.scatter(*pts_top_matched[i].T, marker='x')
-        plt.gca().invert_yaxis()
-        plt.show()
-    """
-
     i_left, i_front, i_right = horizontal_ordering
 
     lines_x = [
@@ -568,8 +474,6 @@ def count_points_tlr(file_labels, quiet=True):
     ]
 
     # X and Z axes can get switched up but it doesn't affect the counting
-
-    # hull_xy = ConvexHull(np.vstack([corners_bottom[[i_left, i_front]], corners_top_front[[i_left, i_front]]]))
 
     count = final_count(file_labels, lines_x, lines_y, lines_z)
 
@@ -615,9 +519,6 @@ def to_right_quadrants(vector):
     -----+-----
      III | IV
 
-
-    "stay (x-)positive"
-
     :param vector:
     :return:
     """
@@ -640,6 +541,12 @@ def count_points_lines_all(lines, points, show=False):
 
 
 def match_top_to_bottom(corners_bottom, corners_top_front):
+    """
+
+    :param corners_bottom:
+    :param corners_top_front:
+    :return:
+    """
     if len(corners_bottom) != len(corners_top_front):
         raise UserWarning(f'Top-bottom matching failed - different number of points '
                           f'{len(corners_bottom)} x {len(corners_top_front)}')
@@ -650,17 +557,12 @@ def match_top_to_bottom(corners_bottom, corners_top_front):
     pts_bottom_shifted = corners_bottom + up_shift
 
     # connect shifted bottom to closest top
-    # top_indices_matched_ordered = cdist(pts_bottom_shifted, corners_top_front).argmin(axis=1)
-    # print(f'old: {top_indices_matched_ordered}')
-
     top_indices_matched_ordered = closest_pairs_greedy(pts_bottom_shifted, corners_top_front, indices_only=True)
-    # print(f'new: {top_indices_matched_ordered_}')
 
     # check unique indices
     idx_len = top_indices_matched_ordered.shape[0]
     expected_sum = (idx_len * (idx_len - 1) / 2)
     if top_indices_matched_ordered.sum() != expected_sum:
-        # print('old, new, target:', top_indices_matched_ordered.sum(), top_indices_matched_ordered_.sum(), expected_sum)
         raise UserWarning(f'Top-bottom matching failed - non-unique pairs: {top_indices_matched_ordered}')
 
     return top_indices_matched_ordered, up_shift
@@ -672,7 +574,6 @@ def count_crates(keypoints, quiet=True):
     count_pred = -1
     try:
         if len(corners_top) >= 4:
-            corners_top = corners_top[:4]
             if len(corners_bottom) == 3:
                 # print('side-oblique view (TLR)')
                 count_pred = count_points_tlr(keypoints)
@@ -713,7 +614,6 @@ def count_crates(keypoints, quiet=True):
 
 
 def main():
-    """ Load GT points """
     input_folder = 'sirky'  # + '_val'
     labels_path = os.path.join(input_folder, 'labels.csv')
     labels = load_labels(labels_path, use_full_path=False, keep_bg=False)
@@ -723,7 +623,7 @@ def main():
     model_crop_delta = 63
     labels = resize_labels(labels, scale, model_crop_delta=model_crop_delta, center_crop_fraction=center_crop_fraction)
 
-    counts_gt = pd.read_csv(os.path.join('sirky', 'count.txt'),  # todo fixed count gt folder
+    counts_gt = pd.read_csv(os.path.join('sirky', 'count.txt'),
                             header=None,
                             names=['image', 'cnt'],
                             dtype={'image': str, 'cnt': np.int32})
@@ -744,199 +644,7 @@ def main():
         if count_pred != count_gt:
             print(f'pred = {count_pred}, gt = {count_gt}')
 
-        if False:
-            window_name = 'hough'
-            cv.namedWindow(window_name, cv.WINDOW_GUI_NORMAL)
-
-            img_copy = img.copy()
-            # for threshold in [2]:  # range(10, 200, 10):
-            for maxLineGap in range(100, 2000, 100):
-
-                lines = cv.HoughLinesP(canvas_cv, rho=2, theta=np.pi / 180, threshold=1,
-                                       lines=None, minLineLength=None, maxLineGap=None)
-
-                # def HoughLinesP(image, rho, theta, threshold, lines=None, minLineLength=None, maxLineGap=None)
-
-                if lines is not None:
-                    print(len(lines))
-                    for line in lines:
-                        for x1, y1, x2, y2 in line:
-                            cv.line(img, (x1, y1), (x2, y2), (0, 0, 255), 1)  # BGR
-
-                    cv.imshow(window_name, img)
-
-                    k = cv.waitKey(0)
-                    print('.')
-                    if k == ord("q"):
-                        break
-                    img = img_copy.copy()
-                else:
-                    print(':', end='')
-
-            cv.destroyAllWindows()
-
-        if False:
-            # still CV
-            theta = np.pi / 180
-            for rho in [1, 2]:
-                for threshold in [2]:  # range(10, 200, 10):
-                    for minLineLength in [80]:  # range(10, 200, 10):
-                        for maxLineGap in range(0, 4000, 200):
-                            lines = cv.HoughLinesP(canvas_cv, rho, theta, threshold, lines=3,
-                                                   minLineLength=minLineLength, maxLineGap=maxLineGap)
-                            print(
-                                f'{rho} {theta} {threshold} {minLineLength} {maxLineGap} -> {len(lines) if lines is not None else 0}')
-
-        if False:
-            # only now scikit-image
-            tested_angles = np.linspace(-np.pi / 2, np.pi / 2, 360, endpoint=False)
-            h, theta, d = hough_line(canvas_cv, theta=tested_angles)
-
-            # Generating figure 1
-            fig, axes = plt.subplots(1, 3, figsize=(15, 6))
-            ax = axes.ravel()
-
-            ax[0].imshow(canvas_cv, cmap=cm.gray)
-            ax[0].set_title('Input image')
-            ax[0].set_axis_off()
-
-            angle_step = 0.5 * np.diff(theta).mean()
-            d_step = 0.5 * np.diff(d).mean()
-            bounds = [np.rad2deg(theta[0] - angle_step),
-                      np.rad2deg(theta[-1] + angle_step),
-                      d[-1] + d_step, d[0] - d_step]
-
-            ax[1].imshow(np.log(1 + h), extent=bounds, cmap=cm.gray, aspect=1 / 1.5)
-            ax[1].set_title('Hough transform')
-            ax[1].set_xlabel('Angles (degrees)')
-            ax[1].set_ylabel('Distance (pixels)')
-            ax[1].axis('image')
-
-            ax[2].imshow(canvas_cv, cmap=cm.gray)
-            ax[2].set_ylim((canvas_cv.shape[0], 0))
-            ax[2].set_axis_off()
-            ax[2].set_title('Detected lines')
-
-            for _, angle, dist in zip(*hough_line_peaks(h, theta, d)):
-                (x0, y0) = dist * np.array([np.cos(angle), np.sin(angle)])
-                ax[2].axline((x0, y0), slope=np.tan(angle + np.pi / 2))
-
-            plt.tight_layout()
-            plt.show()
-
-        if False:
-            """
-            This started from the bottom.
-            
-            Using CV order for everything
-            1) connect closest bottom-top pairs
-                start with bottom points
-                connect each with its closest top point
-                
-            2) connect top front-to-back
-                start with front-top point found in previous step
-                connect it to its closest top point 
-                
-            3) connect everything left-to-right
-            """
-            corners_top = get_cat_points(file_labels, 'corner-top', cv=True)
-            corners_bottom = get_cat_points(file_labels, 'corner-bottom', cv=True)
-
-            # reorder to descending Y => from lowest to highest (image-coords start in top-left)
-            corners_bottom = corners_bottom[np.argsort(corners_bottom[:, 0])[::-1]]
-
-            if len(corners_bottom) == 3:
-                # consider any two of the bottom points to be 'front'
-                pts_bottom_front = corners_bottom[:2]
-            else:
-                pts_bottom_front = corners_bottom
-
-            if False:
-                dists_bottom_top = cdist(corners_top, pts_bottom_front)
-                closest_top_front_indices = np.argmin(dists_bottom_top, axis=0)
-                assert len(np.unique(closest_top_front_indices)) == len(closest_top_front_indices), \
-                    'bottom-top closest pairs not disjoint'
-                # ordering for bottom-to-top-front
-                pts_top_front = corners_top[closest_top_front_indices]
-                # ^ see doc for shortcomings
-            else:
-                closest_top_front_indices = closest_pairs_in_order(pts_bottom_front, corners_top, indices_only=True)
-                pts_top_front = corners_top[closest_top_front_indices]
-
-            # top non-front points
-            pts_top_back = inverse_indexing(corners_top, closest_top_front_indices)  # compare
-
-            if len(pts_top_front) != len(pts_top_front):
-                print('warning, top len - front: {} x back: {}'.format(len(pts_top_front), len(pts_top_back)))
-
-            pts_top_back = closest_pairs_greedy(pts_top_front, pts_top_back)
-
-            # connect horizontally (X)
-            pts_left = np.vstack([pts_top_front[0], pts_top_back[0], pts_bottom_front[0]])
-            pts_right = np.vstack([pts_top_front[1], pts_top_back[1], pts_bottom_front[1]])
-
-            if False:
-                for i in range(len(pts_bottom_front)):
-                    pt = pts_bottom_front[i]
-                    ccl = skimage.draw.disk(pt, radius=5 + i * 10)
-                    canvas_cv[ccl] = 100
-
-            # Z
-            # bottom -> top line
-            connect_points(canvas_cv, pts_bottom_front, pts_top_front, c=120)
-
-            # Y
-            # top-front -> top-back line
-            connect_points(canvas_cv, pts_top_front, pts_top_back, c=120)
-
-            # X
-            # left -> right
-            connect_points(canvas_cv, pts_left, pts_right, c=120)
-
-            # x = []  # left-to-right
-            # y = []  # front-to-back
-            # z = []  # top-to-bottom
-
-            y = axis_direction(pts_top_front, pts_top_back)
-            z = axis_direction(pts_bottom_front, pts_top_front)
-            x = axis_direction(pts_left, pts_right)
-
-            # print(f'Axes in cv order[y, x]\n{x=}\n{y=}\n{z=}\n')
-
-            pts_left_top = np.vstack([pts_top_front[0], pts_top_back[0]])
-            pts_right_top = np.vstack([pts_top_front[1], pts_top_back[1]])
-
-            pts_left_front = np.vstack([pts_bottom_front[0], pts_top_front[0]])
-            pts_right_front = np.vstack([pts_bottom_front[1], pts_top_front[1]])
-
-            lines_x = [
-                pts_top_front,
-                pts_top_back,
-                pts_bottom_front
-            ]
-
-            lines_y = [
-                pts_left_top,
-                pts_right_top
-            ]
-
-            lines_z = [
-                pts_left_front,
-                pts_right_front
-            ]
-
-            count_pred = final_count(file_labels, lines_x, lines_y, lines_z, show=False, cv=True)
-
-            print('pred =', count_pred)
-            count_gt = np.array(counts_gt[counts_gt.image == file].cnt)[0]
-            if count_gt != count_pred:
-                print('wrong, gt =', count_gt)
-
-            print('...')
-            tmp = input()
-            if tmp == 'q':
-                raise ValueError()
-
 
 if __name__ == '__main__':
+    """ Run counting on ground-truth keypoints """
     main()

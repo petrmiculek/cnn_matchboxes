@@ -57,16 +57,16 @@ if __name__ == '__main__':
                         help="show images instead of saving")
 
     """
-    python src_util/show_samples_positions.py -b -c 64 -p 100
-    python src_util/show_samples_positions.py -b -c 64 -p 100 -v
-    python src_util/show_samples_positions.py -b -c 64 -p 500
-    python src_util/show_samples_positions.py -b -c 64 -p 500 -v
+    python3 src_util/show_samples_positions.py -b -c 64 -p 100
+    python3 src_util/show_samples_positions.py -b -c 64 -p 100 -v
+    python3 src_util/show_samples_positions.py -b -c 64 -p 500
+    python3 src_util/show_samples_positions.py -b -c 64 -p 500 -v
     
     """
 
     args = parser.parse_args()
 
-    scale_fixed = 50  # todo
+    scale_fixed = 50  # %
     run_config = '{}x_{:3d}s_{}bg{}{}'.format(
         args.cutout_size, scale_fixed, args.per_image_samples, '_KPonly' * (not args.background), '_val' * args.val)
 
@@ -79,8 +79,6 @@ if __name__ == '__main__':
 
     labels_path = 'datasets' + os.sep + run_config + os.sep + \
                   'labels_with_bg.csv' if args.background else 'labels.csv'
-
-    # labels_path = 'image_regions_64_050_bg500/labels_with_bg.csv'
 
     if not os.path.isdir(output_folder):
         os.makedirs(output_folder, exist_ok=True)

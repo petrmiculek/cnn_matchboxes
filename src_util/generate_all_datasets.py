@@ -16,8 +16,7 @@ for dim in dims:
     for scale in scales:
         for close, far in background_sampling:
             for val in [False, True]:
-                out_folder = datasets_root = '/{}x_{:03d}s_{}bg{}'\
-                             .format(dim, scale, close + far, '_val' if val else '')
+                out_folder = os.path.join(datasets_root, f'/{dim}x_{scale:03d}s_{close + far}bg{"_val" if val else ""}')
                 if os.path.isdir(out_folder):
                     print('Skipping existing:', out_folder)
                     continue

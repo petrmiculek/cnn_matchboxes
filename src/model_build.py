@@ -8,8 +8,7 @@ import warnings
 import tensorflow as tf
 
 from tensorflow.keras.callbacks import \
-    TensorBoard, ReduceLROnPlateau, \
-    LearningRateScheduler, ModelCheckpoint
+    TensorBoard, ReduceLROnPlateau, ModelCheckpoint
 from tensorflow.python.keras import Input
 from tensorflow.python.keras.layers import \
     RandomFlip, RandomRotation, RandomZoom, \
@@ -69,7 +68,6 @@ def get_callbacks():
     file_writer.set_as_default()
 
     """ Callbacks """
-    # lr_sched = LearningRateScheduler(util.lr_scheduler)  # unused
     reduce_lr = ReduceLROnPlateau(monitor='pr_value', mode='max', factor=0.5, min_delta=1e-2,
                                   patience=5, min_lr=5e-6, verbose=tf.compat.v1.logging.ERROR)
     early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_pr_value', patience=15, min_delta=1e-2, mode='max',
@@ -83,9 +81,6 @@ def get_callbacks():
 
     tensorboard_callback = TensorBoard(config.run_logs_dir, write_graph=False,
                                        histogram_freq=1, profile_batch=0)  # profiling needs sudo
-    # tf.debugging.experimental.enable_dump_debug_info(config.run_logs_dir,
-    #                                                  tensor_debug_mode="FULL_HEALTH", circular_buffer_size=-1)
-    # tf.debugging.set_log_device_placement(True)
 
     model_checkpoint_callback = ModelCheckpoint(
         filepath=config.checkpoint_path,

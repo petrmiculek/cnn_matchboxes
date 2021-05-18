@@ -5,8 +5,8 @@ from tensorflow.keras.layers import \
     Input, MaxPool2D
 
 # local
-import general
 import model_util
+import src_util.util
 
 # common model building blocks
 he_norm = tf.keras.initializers.he_normal()

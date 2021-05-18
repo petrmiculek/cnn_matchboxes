@@ -1,66 +1,39 @@
-# cnn_matchboxes
+Bachelor Thesis - Counting Crates in Images
+Author: Petr Mičulek
+Date: 19 May 2021
 
-Experimenting with Convolutional Neural Networks as a part of my Bachelor Thesis at BUT FIT
+The scripts provide 3 main use-cases.
 
-Detecting keypoints in images
+1) Generate cutouts datasets from source photos.
 
-Own dataset - photos of blocks of matchboxes (not included)
+2) Train a CNN model
 
-![annotated-photo.png](https://i.imgur.com/ntyj3CR.png)
-
-Photos annotated with >2000 keypoints of the following **8** categories:
-* corner-top  (Darker Blue)
-* edge-side   (Lighter Blue)
-* intersection-side  (Pink)
-* corner-bottom  (Red)
-* edge-bottom  (Light Green)
-* edge-top   (Yellow)
-* intersection-top (Blue-Green)
-
-+extra category
-* background
-
-(background is randomly sampled from parts of image far enough from the keypoints)
-
-The resulting training set is made up of NxN cutouts with given keypoint in the middle.
-
-An outdated version of the cutouts dataset can be found here: https://nextcloud.fit.vutbr.cz/s/qSHJxRGe9o5kTbK/download
+3) Evaluate a trained CNN model
 
 
-Approach v1:
+The package requirements can be installed like:
 
-Classifying 64x64 regions extracted from images
+```
+pip install -r requirements.txt
+```
 
-Simple Sequential model
-- (Convolution(3x3), ReLU, BatchNorm, MaxPool(2x2)) * N
-- (64, 64, 3) -> (1, 1, 8)
-- Sliding window -> heatmap of activations
-  - slow, not scalable
-  - low output resolution (stride 64)
 
-Approach v2:
+To run the dataset generation, either:
 
-Fully Convolutional Network
 
-- (32, 32, 3) -> (1, 1, 8)
-( still training on classification )
+A) Run generation of a single cutouts dataset (training + validation)
 
-- (Convolution(3x3), ReLU, BatchNorm) * N
-  
-  The only resolution change is the convolution crop
- 
-  => output dimensions are K pixels smaller than input (K = 31, currently)
-  
-- Inference outputs high resolution heatmap of class activations.
-  ( per pixel classification )
-  Inference is run on whole image at once.
+Uses the 128x sample size
+```
+python3 src_util/generate_dataset.py -f -b -c 128 -p 500 -s 25
+python3 src_util/generate_dataset.py -b -c 128 -r -p 500 -s 25
+python3 src_util/generate_dataset.py -f -b -c 128 -p 500 -s 25 -v
+python3 src_util/generate_dataset.py -b -c 128 -r -p 500 -s 25 -v
+```
 
-![output-heatmap.png](https://lh4.googleusercontent.com/Acxpa6797yTrwP3wLLgbt0L0Z-HzTCxd65AQ83dDe5WchKmzWOcApwktG7xhG3Z5Vy9MTh2MTAVQNkYKf04FheizYsE4FxWsntm4bG9H=s1000)
+B) Run generate_all_datasets.py
 
-Further plans:
+- Takes a few minutes, creates 18 dataset versions. Not necessary for a single training/evaluation run.
 
-- Instance "segmentation"
 
-- Counting of boxes
-
-- Multi-view prediction fusion
+Run evaluation of the enclosed trained model (final model)

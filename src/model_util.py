@@ -1,19 +1,14 @@
 # stdlib
-
-# external
 import sys
 
-import tensorflow
+# external
 import tensorflow as tf
-import tensorflow_addons as tfa
-import tensorflow.keras.backend as K
-
-# local
 from tensorboard.plugins.hparams import api as hp
 
+# local
 import config
 from eval_images import eval_full_predictions_all
-from general import exp_form
+from src_util.util import exp_form
 
 """
 Model-related utility code
@@ -30,7 +25,6 @@ def pred_reshape(y_pred):
     :param y_pred: prediction tensor
     :return: squeezed prediction tensor
     """
-    # return tf.reshape(y_pred, [tf.shape(y_pred)[0], tf.shape(y_pred)[3]])
     y_pred = tf.squeeze(y_pred, axis=2)
     y_pred = tf.squeeze(y_pred, axis=1)
     return y_pred
@@ -68,7 +62,7 @@ class Precision(tf.keras.metrics.Precision):
         y_pred_reshaped = pred_reshape(y_pred)
         y_pred_binary = tf.where(tf.argmax(y_pred_reshaped, axis=1) > 0, 1, 0)
 
-        # y_true is evaluated as bool => ok as it is
+        # y_true is evaluated as bool
 
         return super(Precision, self).update_state(y_true, y_pred_binary, sample_weight)
 
@@ -85,26 +79,6 @@ class Recall(tf.keras.metrics.Recall):
         y_pred_binary = tf.where(tf.argmax(y_pred_reshaped, axis=1) > 0, 1, 0)
 
         return super(Recall, self).update_state(y_true, y_pred_binary, sample_weight)
-
-
-class F1(tfa.metrics.F1Score):
-    """Unused"""
-
-    def update_state(self, y_true, y_pred, sample_weight=None):
-        y_pred_reshaped = pred_reshape(y_pred)
-        # y_pred_binary = tf.where(tf.argmax(y_pred_reshaped, axis=1) > 0, 1.0, 0.0)
-        # y_true = tf.greater(y_true, 0)
-        # threshold = tf.reduce_max(y_pred_reshaped, axis=-1, keepdims=True)
-        # y_pred_extra = tf.logical_and(y_pred_reshaped >= threshold, tf.abs(y_pred_reshaped) > 1e-12)
-
-        # tf.print(tf.shape(y_pred_reshaped), tf.shape(y_pred_binary), tf.shape(y_pred_extra))
-
-        # tf.print(y_true)
-
-        y_true = tf.one_hot(tf.cast(y_true, dtype=tf.int32), 8)
-        # tf.print(tf.shape(y_pred * y_true))
-
-        return super(F1, self).update_state(y_true, y_pred_reshaped, sample_weight)
 
 
 class AUC(tf.keras.metrics.AUC):

@@ -25,35 +25,35 @@ padding x radius for background
 Example standalone usage:
 ## 64x
 # bg100
-python src_util/generate_dataset.py -f -b -c 64 -p 100 -s 50
-python src_util/generate_dataset.py -b -c 64 -r -p 100 -s 50
-python src_util/generate_dataset.py -f -b -c 64 -p 100 -s 50 -v
-python src_util/generate_dataset.py -b -c 64 -r -p 100 -s 50 -v
+python3 src_util/generate_dataset.py -f -b -c 64 -p 100 -s 50
+python3 src_util/generate_dataset.py -b -c 64 -r -p 100 -s 50
+python3 src_util/generate_dataset.py -f -b -c 64 -p 100 -s 50 -v
+python3 src_util/generate_dataset.py -b -c 64 -r -p 100 -s 50 -v
 
 # bg500
-python src_util/generate_dataset.py -f -b -c 64 -p 500 -s 50
-python src_util/generate_dataset.py -b -c 64 -r -p 500 -s 50
-python src_util/generate_dataset.py -f -b -c 64 -p 500 -s 50 -v
-python src_util/generate_dataset.py -b -c 64 -r -p 500 -s 50 -v
+python3 src_util/generate_dataset.py -f -b -c 64 -p 500 -s 50
+python3 src_util/generate_dataset.py -b -c 64 -r -p 500 -s 50
+python3 src_util/generate_dataset.py -f -b -c 64 -p 500 -s 50 -v
+python3 src_util/generate_dataset.py -b -c 64 -r -p 500 -s 50 -v
 
 ## 128x
 # bg100
-python src_util/generate_dataset.py -f -b -c 128 -p 100 -s 50
-python src_util/generate_dataset.py -b -c 128 -r -p 100 -s 50
-python src_util/generate_dataset.py -f -b -c 128 -p 100 -s 50 -v
-python src_util/generate_dataset.py -b -c 128 -r -p 100 -s 50 -v
+python3 src_util/generate_dataset.py -f -b -c 128 -p 100 -s 50
+python3 src_util/generate_dataset.py -b -c 128 -r -p 100 -s 50
+python3 src_util/generate_dataset.py -f -b -c 128 -p 100 -s 50 -v
+python3 src_util/generate_dataset.py -b -c 128 -r -p 100 -s 50 -v
 
 # bg500
-python src_util/generate_dataset.py -f -b -c 128 -p 500 -s 50
-python src_util/generate_dataset.py -b -c 128 -r -p 500 -s 50
-python src_util/generate_dataset.py -f -b -c 128 -p 500 -s 50 -v
-python src_util/generate_dataset.py -b -c 128 -r -p 500 -s 50 -v
+python3 src_util/generate_dataset.py -f -b -c 128 -p 500 -s 50
+python3 src_util/generate_dataset.py -b -c 128 -r -p 500 -s 50
+python3 src_util/generate_dataset.py -f -b -c 128 -p 500 -s 50 -v
+python3 src_util/generate_dataset.py -b -c 128 -r -p 500 -s 50 -v
 
 # bg250
-python src_util/generate_dataset.py -f -b -c 64 -p 250 -s 50
-python src_util/generate_dataset.py -b -c 64 -r -p 250 -s 50
-python src_util/generate_dataset.py -f -b -c 64 -p 250 -s 50 -v
-python src_util/generate_dataset.py -b -c 64 -r -p 250 -s 50 -v
+python3 src_util/generate_dataset.py -f -b -c 64 -p 250 -s 50
+python3 src_util/generate_dataset.py -b -c 64 -r -p 250 -s 50
+python3 src_util/generate_dataset.py -f -b -c 64 -p 250 -s 50 -v
+python3 src_util/generate_dataset.py -b -c 64 -r -p 250 -s 50 -v
 """
 
 random.seed(1234)
@@ -189,9 +189,6 @@ def images_to_dataset(do_foreground=True, do_background=True, val=False, region_
             # generate more samples than needed, some might get filtered due to proximity
             samples = int(4 * per_image_samples)
 
-            # try normal distribution
-            # scipy.stats.norm.fit(file_labels).rvs(samples).astype(np.int)
-
             mins = np.min(file_labels_scaled, axis=0)
             maxs = np.max(file_labels_scaled, axis=0)
 
@@ -210,12 +207,6 @@ def images_to_dataset(do_foreground=True, do_background=True, val=False, region_
 
             assert min_x >= 0
             assert min_y >= 0
-
-            # debug
-            # coords = np.vstack([
-            #     np.array([min_x, max_x]),
-            #     np.array([min_y, max_y]),
-            # ]).T.astype(np.intc)
 
             min_dists = cdist(coords, file_labels_scaled).min(axis=1)
             indices = np.where(min_dists > min_dist_bg_from_kp, True, False)
@@ -258,7 +249,7 @@ def images_to_dataset(do_foreground=True, do_background=True, val=False, region_
             merged = pd.concat([labels_csv, bg_csv], ignore_index=True)
 
             merged.to_csv(merged_labels_bg_csv, header=False, index=False, encoding='utf-8')
-            # todo warning - manually created background labels won't be in background.csv
+            # warning - manually created background labels won't be in background.csv
 
 
 if __name__ == '__main__':
@@ -287,9 +278,6 @@ if __name__ == '__main__':
 
     parser.add_argument('--output_folder', '-o', type=str, default=None,
                         help="output folder")
-
-    # python src_util/generate_dataset.py -f -b -c 64 -p 100 -s 50
-    # python src_util/generate_dataset.py -b -c 64 -r -p 100 -s 50
 
     args = parser.parse_args()
     images_to_dataset(args.foreground, args.background, args.val, args.cutout_dize,

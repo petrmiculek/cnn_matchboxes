@@ -1,19 +1,6 @@
-# -*- coding: utf-8 -*-
-"""
-Google colab live version from ~december
-https://colab.research.google.com/drive/1F28FEGGLmy8-jW9IaOo60InR9VQtPbmG
-
-"""
-
-# disable profiling-related-errors
-# def profile(x):
-#     return x
-
-
 # stdlib
 import os
 import sys
-
 from model_util import tensorboard_hparams_init, tf_init
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -23,13 +10,6 @@ import datetime
 from tensorflow.python.framework.errors_impl import NotFoundError
 from tensorboard.plugins.hparams import api as hp
 
-# import cv2 as cv
-# import numpy as np
-# import matplotlib as mpl
-# import matplotlib.pyplot as plt
-# import matplotlib.cm as cm
-# from IPython.display import Image, display
-
 # local files
 from models import *
 import model_build
@@ -38,27 +18,13 @@ from eval_images import eval_full_predictions_all
 from eval_samples import evaluate_model
 from display import show_layer_activations
 from logs import log_model_info
-from src_util.general import safestr, DuplicateStream, get_checkpoint_path
+from src_util.util import safestr, DuplicateStream, get_checkpoint_path
 import config
 
 
 def run(model_builder, hparams):
-    """Perform a single training run
-    """
-    if False:
-        # provided by caller
-        config.epochs = 50
-        config.dataset_dim = 64
-        config.dataset_size = 200
-        config.augment = True
-        config.train = True
-        config.show = False
-        config.scale = 0.5
-        config.center_crop_fraction = 0.5
-        config.batch_size = 128
+    """Perform a single training run"""
 
-    # for batch-running
-    # if True:
     try:
         dataset_dir = '{}x_{:03d}s_{}bg' \
             .format(config.dataset_dim, int(100 * config.scale), config.dataset_size)
@@ -80,9 +46,7 @@ def run(model_builder, hparams):
             callbacks = model_build.get_callbacks()
 
         else:
-            load_model_name = 'dilated_64x_exp2_2021-03-29-15-58-47_full'  # /data/datasets/128x_050s_1000bg
-            # model_config_path = os.path.join('outputs', load_model_name, 'model_config.json')
-            # weights_path = os.path.join('models_saved', load_model_name)
+            load_model_name = '64x_d1-3-5-7-9-11-1-1_2021-05-10-05-53-28_full'  # /data/datasets/128x_025s_1000bg
 
             base_model, model, aug_model = model_build.load_model(load_model_name)
             callbacks = model_build.get_callbacks()
@@ -129,7 +93,6 @@ def run(model_builder, hparams):
                 pass
 
             base_model.save_weights(os.path.join('models_saved', model.name))
-            # base_model.load_weights('models_saved/residual_20210305142236_full')
 
         """Evaluate model"""
 
@@ -143,7 +106,6 @@ def run(model_builder, hparams):
         if val_accu < 95.0:  # %
             print('Val accu too low:', val_accu, 'skipping heatmaps')
             return
-            # sys.exit(0)
 
         """Full image prediction"""
         pix_mse_val, dist_mse_val, keypoint_count_mae_val, crate_count_mae_val, crate_count_failrate_val = \
@@ -226,7 +188,6 @@ if __name__ == '__main__':
         'ds_bg_samples': config.dataset_size,
         'scale': config.scale,
         'crop_fraction': config.center_crop_fraction,
-        # 'tail_downscale': 2  # try if logging to tb fails
     }
     run(m, hparams)
 
