@@ -1,9 +1,11 @@
 # stdlib
 import os
-
-# external
 import sys
 
+curr_path = os.getcwd()
+sys.path.extend([curr_path] + [d for d in os.listdir() if os.path.isdir(d)])
+
+# external
 import tensorflow as tf
 import numpy as np
 import pandas as pd
@@ -31,21 +33,11 @@ if __name__ == '__main__':
     # should not matter
     config.augment = True
 
-    config.output_location = 'best_outputs'
+    config.output_location = 'eval_outputs'
     config.show = True
 
-    # load_model_name = 'dilated_64x_exp2_2021-03-26-04-57-57_full'  # /data/datasets/64x_050s_500bg
-    # load_model_name = 'dilated_64x_exp2_2021-03-27-06-36-50_full'  # /data/datasets/128x_050s_500bg
-    # load_model_name = 'dilated_32x_exp22021-03-28-16-38-11_full'  # /data/datasets/64x_050s_500bg
-    # load_model_name = 'dilated_64x_exp2_2021-03-29-15-58-47_full'  # /data/datasets/128x_050s_1000bg
-    # load_model_name = '32x_d3-5-7-1-1_2021-04-19-14-25-48_full'  # /data/datasets/64x_025s_1000bg
-    # load_model_name = '64x_d1-3-5-7-9-11-1-1_2021-04-23-14-10-33_full'  # /data/datasets/128x_050s_1000bg
-    # load_model_name = '64x_d1-3-5-7-9-11-1-1_2021-04-23-14-10-33_full'  # /data/datasets/128x_050s_1000bg
-    # load_model_name = '64x_d1-3-5-7-9-11-1-1_2021-04-30-05-56-46_full'  # /data/datasets/128x_050s_1000bg
-    # load_model_name = '64x_d1-3-5-7-9-11-1-1_2021-05-08-05-54-02_full'  # /data/datasets/128x_050s_1000bg
-    load_model_name = '64x_d1-3-5-7-9-11-1-1_2021-05-10-05-53-28_full'  # /data/datasets/128x_050s_1000bg
+    load_model_name = '64x_d1-3-5-7-9-11-1-1_2021-05-10-05-53-28_full'  # datasets/128x_025s_1000bg
 
-    # load_model_name = '99x_d1-3-5-7-9-11-13-1_2021-04-29-11-43-25_full'  # /data/datasets/128x_050s_1000bg
     config.model_name = load_model_name + '_reloaded'
 
     try:
@@ -62,7 +54,7 @@ if __name__ == '__main__':
     base_model, model, aug_model = model_build.load_model(load_model_name, load_weights=True)
     config.epochs_trained = 123  # avoid epoch number confusion in tensorboard
 
-    dataset_dir = '/data/datasets/{}x_{:03d}s_{}bg'\
+    dataset_dir = 'datasets/{}x_{:03d}s_{}bg'\
         .format(config.dataset_dim, int(100 * config.scale), config.dataset_size)
 
     val_ds, _, _ = get_dataset(dataset_dir + '_val')
@@ -82,14 +74,7 @@ if __name__ == '__main__':
         show_augmentation(aug_model, imgs)
 
     if False:
-        # save model summary figure
-        import visualkeras
-        from PIL import ImageFont
-        font = ImageFont.truetype('/usr/share/fonts/truetype/cmu/cmunrm.ttf', 32)
-        visualkeras.layered_view(model, legend=True, font=font, to_file='model_summary.pdf')
-
-    if False:
-        config.output_location = os.path.join('best_outputs', 'svg_' + model.name)
+        config.output_location = os.path.join('eval_outputs', 'svg_' + model.name)
         # run evaluation
         mse_pix_val, mse_val, keypoint_count_mae_val, crate_count_mae_val, crate_count_failrate_val = \
             eval_full_predictions_all(base_model, val=True, output_location=config.output_location, show=config.show)
@@ -154,7 +139,7 @@ if __name__ == '__main__':
                 continue
 
             file = '20201020_115946.jpg'
-            config.center_crop_fraction = 1.0
+            config.center_crop_fraction = 0.1
 
             img_path = os.path.join(images_dir, file)
             img, orig_size = load_image(img_path, 1.0, config.center_crop_fraction)
@@ -181,28 +166,3 @@ if __name__ == '__main__':
             labels = resize_labels(labels, 1.0, 0, config.center_crop_fraction)
             file_labels = labels[labels.image == file]
             plt.imshow(img)
-
-            colors = {
-                'background': 'w',
-                'corner-bottom': 'blueviolet',
-                'corner-top': 'magenta',
-                'edge-bottom': 'blue',
-                'edge-side': 'dodgerblue',
-                'edge-top': 'turquoise',
-                'intersection-side': 'darkorange',
-                'intersection-top': 'gold'}
-
-            from counting import get_gt_points
-            for i, cat in enumerate(config.class_names):
-                pts = get_gt_points(file_labels, cat)
-                c = colors[cat]
-                if len(pts) > 0:
-                    plt.scatter(*pts.T, marker='o', color=c)
-
-
-            plt.axis('off')
-            plt.tight_layout()
-            plt.legend(config.class_names[1:])
-            plt.savefig('annotations.pdf')
-
-            plt.show()
