@@ -43,6 +43,14 @@ The final model is by default set for running evaluation.
 The model weights and outputs folder names contain the model training run name:
 `64x_d1-3-5-7-9-11-1-1_2021-05-10-05-53-28_full`
 
-The code is best run by parts in an interactive environment like ipython
+The code is best run by parts in an interactive environment:
+
+`ipython -i src/eval_run.py`
+
+###Train a CNN model
+
+`python3 src/training_run.py`
+
+
 
 
